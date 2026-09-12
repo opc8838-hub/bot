@@ -12,20 +12,43 @@
 > 渲染引擎均来自上游项目，版权与功劳归原作者所有。本仓库只做了少量修改，
 > 见 [What this fork changes](#what-this-fork-changes)。
 
+## ▶ Open the editor / 打开编辑器
+
+**<https://opc8838-hub.github.io/bot/>**
+
+Nothing to install and no account: the editor runs entirely in the browser, and
+whatever you change is kept in your own browser storage. Pick a shape, a colour
+and an expression, then download the result as SVG, PNG, an animated SVG or GIF,
+or a whole timeline as GIF or MP4.
+
+**<https://opc8838-hub.github.io/bot/>** —— 打开即用，不用安装、不用登录。编辑器完全
+在浏览器里运行，你的改动只存在你自己的浏览器里。选形状、颜色、表情，然后导出
+SVG / PNG / 动画 SVG / GIF，时间轴还能导出 GIF 或 MP4。
+
+界面语言会自动跟随浏览器（法语 / 英语 / 中文），也可以随时在 **Settings → Language**
+里手动切换。本仓库是上游法语项目，所以代码注释和提交信息都是法文。
+
+The rest of this file documents the code. If you only want to use the editor, the
+link above is all you need.
+
 An SVG recreation of the x.ai bot avatar: **one filled black shape** that morphs
 between 14 states, **two white shapes** for the eyes that morph independently, on
 a plain background. No animation library.
 
 ![The avatar going through idle, wink, orbit and burst](docs/demo.gif)
 
-## Running it
+## Running it locally
+
+Only needed to work on the code — the hosted editor above needs none of this.
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Then open http://localhost:5190.
+Then open http://localhost:5190. The port is fixed in `vite.config.ts`, and the
+build carries no `base`, so local dev stays on `/` while the published site is
+built with `--base=/bot/` by `.github/workflows/pages.yml`.
 
 ```bash
 pnpm test     # vitest

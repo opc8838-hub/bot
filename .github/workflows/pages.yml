@@ -1,0 +1,45 @@
+name: pages
+# Le site est purement statique — aucun serveur, aucun appel reseau, l'avatar et
+# l'editeur tiennent dans le bundle — donc `vite build` suffit a le publier.
+#
+# `workflow_dispatch` en plus du push : pouvoir republier sans toucher au code
+# sert le jour ou l'onactive Pages ou change de domaine.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+# Une seule mise en ligne a la fois, et on n'interrompt PAS celle qui est en
+# cours : couper un deploiement a moitie fait laisse le site dans l'etat ou il
+# s'est arrete.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  publie:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      # Le controle de types reste, comme dans la CI : `vite build` seul publierait
+      # un bundle que `vue-tsc` aurait refuse.
+      - run: pnpm exec vue-tsc --noEmit
+      # `--base` ici et non dans `vite.config.ts` : le site est servi depuis /bot/
+      # et pas depuis la racine du domaine, alors que `pnpm dev` doit continuer a
+      # repondre sur http://localhost:5190/ sans sous-chemin.
+      - run: pnpm exec vite build --base=/bot/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deploiement
+        uses: actions/deploy-pages@v4
