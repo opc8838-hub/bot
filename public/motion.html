@@ -71,7 +71,11 @@
         transform-origin: 50% 50%;
         border-radius: 4px;
         overflow: hidden;
-        background: #1c1c22;
+        /* La teinte de l'accent et non un gris sombre : avant le premier envoi,
+           une carte sans SVG doit rester LISIBLE. En #1c1c22 sur un fond #0b0b0d
+           la pile ne se distinguait pas du fond, et la page semblait vide au lieu
+           de montrer ce qu'elle fait. */
+        background: var(--accent);
       }
       .carte img {
         display: block;
