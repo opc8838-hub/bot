@@ -1,21 +1,19 @@
 <!doctype html>
 <!--
-  Editeur de l'effet « rangees qui s'ecartent », releve sur la reference image par
-  image plutot que devine :
+  Editeur de l'effet « rangees qui s'ecartent », releve sur les 478 images de la
+  reference typecascade (flux reel 720x1280 a 30 i/s, duree 15,933 s) :
 
-  - Rangees ALIGNEES, pas de decalage une rangee sur deux. Les bandes de cartes
-    occupent exactement les memes ordonnees d'un bout a l'autre du palier.
-  - Grille carree. Sur la reference, carte de 294 px pour un pas de 316 px a
-    960 px de haut : la carte fait 30 % de la hauteur de l'ecran et l'interstice
-    7,5 % de la carte. La grille deborde a gauche et a droite — les cartes y sont
-    coupees par le bord — mais remplit la hauteur exactement.
+  - La boucle complete mesure pres de 8 s : pile seule 1,5 s, ouverture 1,1 s,
+    glissement 3,7 s et fermeture 1,7 s.
+  - L'ouverture a deux gestes qui se chevauchent legerement : les cartes s'eventent
+    d'abord sur l'axe horizontal, puis cette bande se separe verticalement en trois
+    rangees. La fermeture inverse exactement ces deux gestes.
   - Les rangees GLISSENT en sens ALTERNE pendant le palier, a vitesse a peu pres
     constante : rangee 0 vers la droite, rangee 1 vers la gauche, etc. Releve sur
     trois rangees independantes, meme profil de vitesse pour les trois.
-  - L'entree et la sortie ne sont pas une pile qui s'ouvre : les cartes sont
-    REPOUSSEES radialement hors du champ et grossies, donc elles se chevauchent en
-    traversant l'ecran, puis se posent sur leur case. C'est ce qui vide l'ecran aux
-    deux extremites de la boucle.
+  - Au repos toutes les cartes sont exactement superposees et les cartes sous la
+    couverture sont masquees : on ne voit donc qu'une seule carte, sans paquet de
+    tranches ni ombres accumulees.
 
   Chaque carte porte un SVG ANIME televerse, et non une image fixe. C'est toute la
   difference avec la reference : le mouvement d'ensemble et le mouvement propre de
@@ -51,6 +49,8 @@
         --texte: #ececf1;
         --faible: #8b8b96;
         --accent: #f97316;
+        --largeur-panneau: 264px;
+        --retrait-panneau: 296px;
       }
       * {
         box-sizing: border-box;
@@ -67,12 +67,14 @@
         overflow: hidden;
       }
 
-      /* La scene occupe tout l'ecran : c'est elle qu'on regarde, le panneau
-         n'est qu'un reglage. */
+      /* Le panneau a sa propre colonne. La scene ne passe jamais dessous. */
       #scene {
         position: absolute;
-        inset: 0;
+        inset: 0 var(--retrait-panneau) 0 0;
         overflow: hidden;
+      }
+      body.panneau-ferme #scene {
+        right: 0;
       }
       #scene.survol {
         outline: 2px dashed var(--accent);
@@ -80,15 +82,18 @@
       }
       .carte {
         position: absolute;
-        /* `transform-origin` au centre : l'eloignement radial se decrit alors comme
-           une translation depuis le centre de la carte, sans coin a recalculer. */
         transform-origin: 50% 50%;
-        border-radius: 4px;
+        border-radius: 8%;
         overflow: hidden;
+        box-shadow: 0 5px 14px rgb(0 0 0 / 58%);
+        will-change: transform, opacity;
         /* La teinte de l'accent et non un gris sombre : avant le premier envoi,
            une carte sans SVG doit rester LISIBLE. En #1c1c22 sur un fond #0b0b0d
            la pile ne se distinguait pas du fond, et la page semblait vide au lieu
            de montrer ce qu'elle fait. */
+        background: transparent;
+      }
+      .carte:empty {
         background: var(--accent);
       }
       .carte img {
@@ -103,7 +108,7 @@
         position: absolute;
         top: 16px;
         right: 16px;
-        width: 264px;
+        width: var(--largeur-panneau);
         max-height: calc(100% - 32px);
         overflow-y: auto;
         padding: 16px;
@@ -163,6 +168,15 @@
         border-radius: 4px;
         background: none;
       }
+      select {
+        min-width: 112px;
+        padding: 4px 24px 4px 8px;
+        border: 1px solid var(--bord);
+        border-radius: 5px;
+        background: #22222a;
+        color: var(--texte);
+        font: inherit;
+      }
       .boutons {
         display: flex;
         gap: 6px;
@@ -215,6 +229,11 @@
         font: inherit;
         cursor: pointer;
       }
+      @media (max-width: 700px) {
+        #scene {
+          right: 0;
+        }
+      }
     </style>
   </head>
   <body>
@@ -223,7 +242,7 @@
 
     <aside id="panneau">
       <h1>卡牌动效编辑器</h1>
-      <p class="note">上传能动的小卡 SVG，整体散开的同时每张卡自己也在动。</p>
+        <p class="note">固定墨黑专注首卡；45 张按颜色与表情均衡排布。调整排版时自动暂停预览。</p>
 
       <fieldset>
         <legend>卡牌</legend>
@@ -238,29 +257,54 @@
       <fieldset>
         <legend>排版</legend>
         <label>行数 <b id="v-rows"></b></label>
-        <input id="rows" type="range" min="1" max="6" step="1" />
+        <input id="rows" type="range" min="2" max="5" step="1" />
         <label>间距 <b id="v-gap"></b></label>
         <input id="gap" type="range" min="0" max="0.3" step="0.005" />
-        <label>卡片长宽比 <b id="v-ratio"></b></label>
-        <input id="ratio" type="range" min="1" max="2" step="0.05" />
-        <label>每行漂移 <b id="v-derive"></b></label>
-        <input id="derive" type="range" min="0" max="0.6" step="0.01" />
+        <label>卡片大小（等比例） <b id="v-size"></b></label>
+        <input id="size" type="range" min="0.65" max="1.25" step="0.01" />
+        <label>横移速度 <b id="v-derive"></b></label>
+        <input id="derive" type="range" min="0" max="0.8" step="0.01" />
       </fieldset>
 
       <fieldset>
         <legend>动效</legend>
-        <label>散开 <b id="v-ouvre"></b></label>
+        <label>展开方式
+          <select id="mode">
+            <option value="eventail">横向分排（现有）</option>
+            <option value="dos">背后向上（新增）</option>
+          </select>
+        </label>
+        <div id="options-dos" hidden>
+          <label>飞行倾角 <b id="v-inclinaison"></b></label>
+          <input id="inclinaison" type="range" min="0" max="18" step="1" />
+        </div>
+        <label>收拢方式
+          <select id="mode-repli">
+            <option value="synchrone">同步收拢（现有）</option>
+            <option value="rangees">逐排收回（新增）</option>
+          </select>
+        </label>
+        <label>单卡停留 <b id="v-repos"></b></label>
+        <input id="repos" type="range" min="0" max="4" step="0.1" />
+        <label>展开时长 <b id="v-ouvre"></b></label>
         <input id="ouvre" type="range" min="0.2" max="4" step="0.1" />
-        <label>停留 <b id="v-tenue"></b></label>
+        <label>横移时长 <b id="v-tenue"></b></label>
         <input id="tenue" type="range" min="0" max="8" step="0.1" />
-        <label>收拢 <b id="v-repli"></b></label>
+        <label>收拢时长 <b id="v-repli"></b></label>
         <input id="repli" type="range" min="0.2" max="4" step="0.1" />
-        <label>交错 <b id="v-stagger"></b></label>
-        <input id="stagger" type="range" min="0" max="1" step="0.05" />
-        <label>飞出距离 <b id="v-recul"></b></label>
-        <input id="recul" type="range" min="1" max="4" step="0.1" />
-        <label>飞出角度 <b id="v-angle"></b></label>
+        <label>抽出交错 <b id="v-stagger"></b></label>
+        <input id="stagger" type="range" min="0" max="0.5" step="0.01" />
+        <label>展开缩小倍率 <b id="v-pile"></b></label>
+        <input id="pile" type="range" min="0.5" max="1" step="0.01" />
+        <label>叠放角度 <b id="v-angle"></b></label>
         <input id="angle" type="range" min="-20" max="20" step="1" />
+        <label>快慢节奏
+          <select id="rythme">
+            <option value="fluide">丝滑</option>
+            <option value="regulier">匀速</option>
+            <option value="vif">利落</option>
+          </select>
+        </label>
       </fieldset>
 
       <fieldset>
@@ -269,59 +313,103 @@
           <button id="lecture">暂停</button>
           <button id="rejouer">重播</button>
         </div>
+        <label>导出画面（仅左侧 16:9）
+          <select id="taille-video">
+            <option value="1920x1080">1920×1080 · 16:9</option>
+            <option value="1280x720">1280×720 · 16:9</option>
+          </select>
+        </label>
+        <label>视频帧率
+          <select id="fps-video">
+            <option value="30">30 FPS</option>
+            <option value="60">60 FPS</option>
+          </select>
+        </label>
+        <div class="boutons" style="margin-top: 8px">
+          <button id="sauver-json" title="保存当前全部参数">保存设置</button>
+          <button id="exporter-mp4" title="逐帧导出左侧动画画面为 MP4">导出 MP4</button>
+        </div>
+        <p id="etat-export" class="note" style="margin: 7px 0 0"></p>
         <label>背景 <b></b></label>
         <input id="fond" type="color" />
       </fieldset>
     </aside>
 
+    <script src="./vendor/h264-mp4-encoder.web.js"></script>
     <script type="module">
+      import {
+        BufferTarget,
+        CanvasSource,
+        Mp4OutputFormat,
+        Output
+      } from './vendor/mediabunny.min.mjs'
       /*
        * Tout est en clair ici : pas de build, pas de dependance, pas de cadre.
        * La page doit rester lisible telle quelle dans le depot.
        */
       const NS = 'http://www.w3.org/2000/svg'
 
+      // Le fichier exporte par l'editeur devient la source de verite du preset
+      // initial. Le meme JSON peut donc etre relu, versionne et remplace sans
+      // recopier manuellement ses valeurs dans plusieurs fonctions.
+      const CONFIG_PAR_DEFAUT = await fetch('./cardbot-reglages-default.json')
+        .then((reponse) => {
+          if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`)
+          return reponse.json()
+        })
+
       /* Nombre maximal d'URL distinctes par fichier televerse. Chaque URL est un
          document SVG anime de plus pour le navigateur : au-dela, les cartes se
          partagent les horloges existantes, ce qui coute un peu de desynchronisation
          et economise beaucoup de rendu. */
       const PLAFOND_HORLOGES = 24
+      const NOMBRE_CARTES_SITE = CONFIG_PAR_DEFAUT.cartes.length
+      const CARTE_INITIALE = { ...CONFIG_PAR_DEFAUT.carteInitiale }
+      const COULEURS = [
+        '墨黑', '奶油白', '棕色', '橙色', '灰色', '琥珀色',
+        '粉色', '紫色', '红色', '绿色', '蓝色', '青绿色'
+      ]
+      const EXPRESSIONS = [
+        '专注', '兴奋', '困倦', '困惑', '大笑', '好奇', '害怕', '平静',
+        '开心', '得意', '怀疑', '惊讶', '无趣', '生气', '羞怯', '难过'
+      ]
 
       const scene = document.getElementById('scene')
       const panneau = document.getElementById('panneau')
       const cle = document.getElementById('cle')
 
-      /* Les reglages par defaut sont ceux releves sur la reference, et non des
-         valeurs de depart arbitraires : 3 rangees et un interstice de 8 % donnent
-         une carte a 30 % de la hauteur de l'ecran, comme elle, et les trois durees
-         donnent une boucle de 7,8 s contre 8,0 s pour la sienne. */
-      const reglages = {
-        rows: 3,
-        gap: 0.08,
-        ratio: 1.4,
-        derive: 0.21,
-        ouvre: 2.4,
-        tenue: 3.4,
-        repli: 1.3,
-        stagger: 0.3,
-        recul: 2.6,
-        angle: 0,
-        fond: '#0b0b0d'
-      }
+      const reglages = { ...CONFIG_PAR_DEFAUT.reglages }
 
-      /* Grossissement d'une carte en vol, par pas d'eloignement. Mesure sur la
-         reference : au plus fort du chevauchement une carte fait environ 2,4 fois sa
-         taille posee pour un eloignement de 2,6 pas. */
-      const GROSSIT = 0.55
+      // Les deux gestes se chevauchent un peu, comme dans les images 30 a 60.
+      const FIN_EVENTAIL = 0.76
+      const DEBUT_RANGEES = 0.27
+      const FIN_RAPPROCHEMENT = 0.62
+      const DEBUT_EMPILEMENT = 0.2
+      const FIN_EMPILEMENT = 0.78
+      const FONDU_PILE = 0.14
 
       /** Les SVG televerses : { nom, texte, horloges }. */
       let fichiers = []
-      /** Les cartes posees : { el, ux, uy, loin, coin, rangee }. */
+      /** Les cartes posees : { el, x, y, ordre, rangee, hero, portee }. */
       let cartes = []
       /** Le pas de la grille courante, en px : la derive s'exprime en pas. */
       let pasCourant = { x: 1, y: 1 }
-      let joue = true
-      let t0 = performance.now()
+      const apercu = new URLSearchParams(location.hash.slice(1).replaceAll(',', '&'))
+      const tempsFixe = apercu.has('t') ? Number(apercu.get('t')) : null
+      if (apercu.get('mode') === 'dos') reglages.mode = 'dos'
+      if (apercu.get('repli') === 'rangees') reglages.modeRepli = 'rangees'
+      let joue = tempsFixe === null && !apercu.has('stop')
+      let exporteVideo = false
+      let tempsLecture = 0
+      let dernierInstant = performance.now()
+
+      // Une URL de comparaison peut masquer les controles et figer une image :
+      // `#preview,t=3`. Elle sert aussi aux captures de non-regression.
+      if (apercu.has('preview')) {
+        panneau.classList.add('ferme')
+        document.body.classList.add('panneau-ferme')
+        cle.hidden = true
+      }
 
       /* ------------------------------------------------------------- recadrage */
 
@@ -375,6 +463,23 @@
       }
 
       /**
+       * Le SVG noir utilise normalement une silhouette blanche sous le masque :
+       * elle dessine les yeux, mais son antialiasing laisse aussi un filet clair
+       * sur le contour. Pour la seule carte de couverture, la silhouette devient
+       * noire et deux copies animees des yeux sont reposees en blanc au-dessus.
+       * Le fichier SVG source reste intact.
+       */
+      function nettoieCarteNoire(texte) {
+        const yeux = [...texte.matchAll(/<path[^>]*class="oeil[01]"[^>]*\/>/g)]
+          .map((resultat) => resultat[0].replace('fill="#000"', 'fill="#f9f9f9"'))
+          .join('')
+        if (!yeux) return texte
+        return texte
+          .replace('fill="#f9f9f9"', 'fill="#0a0a0c"')
+          .replace('<style>', `<g aria-hidden="true">${yeux}</g><style>`)
+      }
+
+      /**
        * Decale l'horloge d'un exemplaire.
        *
        * Chaque document SVG demarre son animation a l'instant ou il est cree : sans
@@ -391,6 +496,137 @@
           'animation-direction:alternate}',
           `animation-direction:alternate;animation-delay:${retard.toFixed(3)}s}`
         )
+      }
+
+      /** Melange de Fisher-Yates, sans modifier la liste recue. */
+      function melangeAleatoire(liste) {
+        const copie = [...liste]
+        for (let i = copie.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          const temporaire = copie[i]
+          copie[i] = copie[j]
+          copie[j] = temporaire
+        }
+        return copie
+      }
+
+      /**
+       * Familles visuelles : deux voisins horizontaux ne viennent pas de la meme
+       * famille tant qu'une autre couleur est encore disponible.
+       */
+      const FAMILLE_COULEUR = {
+        墨黑: 'sombre', 灰色: 'sombre', 棕色: 'sombre',
+        奶油白: 'clair',
+        橙色: 'ambre', 琥珀色: 'ambre',
+        红色: 'chaud', 粉色: 'chaud',
+        绿色: 'vert', 青绿色: 'vert',
+        蓝色: 'froid', 紫色: 'froid'
+      }
+
+      function quotasEquilibres(valeurs, total) {
+        const base = Math.floor(total / valeurs.length)
+        const supplement = total % valeurs.length
+        const favorises = new Set(melangeAleatoire(valeurs).slice(0, supplement))
+        return Object.fromEntries(valeurs.map((v) => [v, base + (favorises.has(v) ? 1 : 0)]))
+      }
+
+      /**
+       * Produit exactement 45 variantes uniques : chaque couleur parait 3 ou 4
+       * fois et chaque expression 2 ou 3 fois. La premiere carte est toujours
+       * « 墨黑 / 专注 » ; elle est reservee a la couverture de la pile.
+       */
+      function cheminsEquilibres() {
+        // Le preset sauvegarde l'ordre exact, pas seulement les quotas. Le nom
+        // contient deja la couleur qui designe son dossier dans la bibliotheque.
+        if (CONFIG_PAR_DEFAUT.cartes?.length) {
+          return CONFIG_PAR_DEFAUT.cartes.map((nom) => {
+            const couleur = nom.match(/^扑克牌-(.+?)-/)?.[1]
+            if (!couleur) throw new Error(`素材名称无效：${nom}`)
+            return `./bloub-export/${couleur}/${nom}`
+          })
+        }
+
+        const quotaCouleur = quotasEquilibres(COULEURS, NOMBRE_CARTES_SITE)
+        const quotaExpression = quotasEquilibres(EXPRESSIONS, NOMBRE_CARTES_SITE)
+        quotaCouleur[CARTE_INITIALE.couleur]--
+        quotaExpression[CARTE_INITIALE.expression]--
+
+        const choisis = [CARTE_INITIALE]
+        const utilises = new Set([
+          `${CARTE_INITIALE.couleur}/${CARTE_INITIALE.expression}`
+        ])
+        let precedente = null
+
+        while (choisis.length < NOMBRE_CARTES_SITE) {
+          let couleurs = COULEURS.filter((c) => quotaCouleur[c] > 0)
+          const contrastees = couleurs.filter((c) =>
+            !precedente || FAMILLE_COULEUR[c] !== FAMILLE_COULEUR[precedente]
+          )
+          if (contrastees.length) couleurs = contrastees
+          const maximum = Math.max(...couleurs.map((c) => quotaCouleur[c]))
+          couleurs = melangeAleatoire(couleurs.filter((c) => quotaCouleur[c] === maximum))
+
+          let paire = null
+          for (const couleur of couleurs) {
+            let expressions = EXPRESSIONS.filter((e) =>
+              quotaExpression[e] > 0 && !utilises.has(`${couleur}/${e}`)
+            )
+            if (!expressions.length) continue
+            const maxExpression = Math.max(...expressions.map((e) => quotaExpression[e]))
+            expressions = melangeAleatoire(
+              expressions.filter((e) => quotaExpression[e] === maxExpression)
+            )
+            paire = { couleur, expression: expressions[0] }
+            break
+          }
+
+          // Les 192 combinaisons rendent ce repli exceptionnel, mais il garde le
+          // generateur total meme si la bibliotheque change plus tard.
+          if (!paire) {
+            const possibles = COULEURS.flatMap((couleur) =>
+              EXPRESSIONS.map((expression) => ({ couleur, expression }))
+            ).filter(({ couleur, expression }) =>
+              quotaCouleur[couleur] > 0 && quotaExpression[expression] > 0 &&
+              !utilises.has(`${couleur}/${expression}`)
+            )
+            paire = melangeAleatoire(possibles)[0]
+          }
+
+          choisis.push(paire)
+          utilises.add(`${paire.couleur}/${paire.expression}`)
+          quotaCouleur[paire.couleur]--
+          quotaExpression[paire.expression]--
+          precedente = paire.couleur
+        }
+
+        return choisis.map(({ couleur, expression }) =>
+          `./bloub-export/${couleur}/扑克牌-${couleur}-${expression}.svg`
+        )
+      }
+
+      /** Charge le jeu integre sans demander a l'utilisateur de televerser 45 SVG. */
+      async function chargeBibliotheque() {
+        const charges = await Promise.all(cheminsEquilibres().map(async (chemin) => {
+          try {
+            const reponse = await fetch(encodeURI(chemin))
+            if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`)
+            const brut = await reponse.text()
+            const recadreSvg = recadre(brut)
+            const verrouille = chemin.includes('/墨黑/扑克牌-墨黑-专注.svg')
+            return {
+              nom: decodeURIComponent(chemin.split('/').at(-1)),
+              texte: verrouille ? nettoieCarteNoire(recadreSvg.texte) : recadreSvg.texte,
+              horloges: [],
+              verrouille
+            }
+          } catch (err) {
+            console.error(`素材加载失败：${chemin}`, err)
+            return null
+          }
+        }))
+        fichiers = charges.filter(Boolean)
+        pose()
+        reliste()
       }
 
       /** Ouvre les horloges manquantes d'un fichier, sans jamais les refermer. */
@@ -410,10 +646,9 @@
       /**
        * Pose la grille.
        *
-       * Les rangees sont alignees et la grille remplit la hauteur exactement, comme
-       * la reference. En revanche elle deborde a gauche et a droite : les cartes y
-       * sont coupees par le bord, et c'est cette reserve qui permet a la derive de
-       * tourner sur toute une boucle sans jamais decouvrir le bord de la grille.
+       * Une seule colonne de garde de chaque cote suffit : pendant le glissement,
+       * les centres sont reboucles modulo la largeur de la bande. On ne fabrique
+       * donc jamais les dizaines de cartes hors champ qui couvraient le panneau.
        */
       function pose() {
         const w = scene.clientWidth
@@ -422,132 +657,285 @@
         cartes = []
         if (!w || !h) return
 
-        const hauteur = h / (reglages.rows + (reglages.rows - 1) * reglages.gap)
+        // Environ 10 % de marge verticale de chaque cote, comme la reference.
+        const hauteurBase = h / (reglages.rows + 1 + (reglages.rows - 1) * reglages.gap)
+        const hauteur = hauteurBase * reglages.size
         const largeur = hauteur / reglages.ratio
         const pasY = hauteur * (1 + reglages.gap)
         const pasX = largeur + hauteur * reglages.gap
         pasCourant = { x: pasX, y: pasY }
 
-        // Deux pas de marge de chaque cote : sur une boucle entiere la derive vaut
-        // `derive * duree` pas, moins que cela aux reglages par defaut.
-        const cols = Math.ceil(w / pasX) + 4
-        const gauche = (w - cols * pasX) / 2
+        const grilleH = reglages.rows * hauteur + (reglages.rows - 1) * hauteur * reglages.gap
+        const haut = (h - grilleH) / 2
         const cx = w / 2
-        const cy = h / 2
-        const portee = Math.hypot(cols * pasX, reglages.rows * pasY) / 2
+        let cols = Math.ceil(w / pasX) + 2
+        if (cols % 2 === 0) cols++
+        const demi = (cols - 1) / 2
+        const portee = cols * pasX
+        const definitions = []
 
         for (let row = 0; row < reglages.rows; row++) {
-          for (let col = 0; col < cols; col++) {
-            const i = row * cols + col
-            const x = gauche + col * pasX
-            const y = row * pasY
-
-            const el = document.createElement('div')
-            el.className = 'carte'
-            el.style.cssText = `left:${x}px;top:${y}px;width:${largeur}px;height:${hauteur}px`
-
-            if (fichiers.length) {
-              const f = fichiers[i % fichiers.length]
-              const k = Math.floor(i / fichiers.length)
-              const urls = horloge(f, k + 1)
-              const img = document.createElement('img')
-              img.src = urls[k % urls.length]
-              img.alt = ''
-              el.appendChild(img)
-            }
-
-            scene.appendChild(el)
-
-            const mx = x + largeur / 2
-            const my = y + hauteur / 2
-            // Direction d'eloignement : une carte pile au centre n'en a pas, on lui
-            // en donne une par son rang de colonne, sans quoi elle resterait plantee
-            // au milieu pendant que toutes les autres s'en vont.
-            let ux = mx - cx
-            let uy = my - cy
-            const n = Math.hypot(ux, uy)
-            if (n < 1) {
-              ux = col % 2 ? 1 : -1
-              uy = 0
-            } else {
-              ux /= n
-              uy /= n
-            }
-
-            cartes.push({
-              el,
-              ux,
-              uy,
-              loin: n,
-              // L'onde part du centre : le retard suit la distance au centre,
-              // normalisee, donc l'ordre reste le meme quelle que soit la grille.
-              coin: Math.min(n / portee, 1),
-              rangee: row
-            })
+          for (let col = -demi; col <= demi; col++) {
+            const x = cx + col * pasX
+            const y = haut + row * pasY + hauteur / 2
+            const ordre = demi ? Math.abs(col) / demi : 0
+            definitions.push({ row, col, x, y, ordre })
           }
         }
+
+        // La carte de couverture rejoint le tiers droit de la derniere rangee,
+        // comme la carte florale visible devant la pile dans la reference.
+        const derniereRangee = definitions.filter((d) => d.row === reglages.rows - 1)
+        const hero = reglages.mode === 'dos'
+          ? derniereRangee.reduce((a, b) =>
+            Math.abs(a.x - (w - largeur / 2)) < Math.abs(b.x - (w - largeur / 2)) ? a : b
+          )
+          : derniereRangee.reduce((a, b) => Math.abs(a.col - 1) < Math.abs(b.col - 1) ? a : b)
+        // Conserver l'ordre reel de la grille : la sequence de couleurs a ete
+        // calculee pour que les voisins gauche/droite soient contrastes.
+        let indiceFichier = 1
+        for (let i = 0; i < definitions.length; i++) {
+          const d = definitions[i]
+          const estHero = d === hero
+
+          const el = document.createElement('div')
+          el.className = 'carte'
+          const profondeur = reglages.mode === 'dos'
+            ? 700 + d.row * 100 + demi - Math.abs(d.col)
+            : 1000 - Math.round(d.ordre * 100)
+          el.style.cssText =
+            `left:0;top:0;width:${largeur}px;height:${hauteur}px;` +
+            `z-index:${estHero ? 10000 : profondeur}`
+
+          if (fichiers.length) {
+            // La couverture centrale ne change jamais : 墨黑 / 专注. Les autres
+            // cartes parcourent la sequence equilibree dans l'ordre de la grille.
+            const indice = estHero
+              ? 0
+              : indiceFichier++ % fichiers.length
+            const f = estHero
+              ? fichiers.find((item) => item.verrouille) || fichiers[0]
+              : fichiers[indice]
+            const k = Math.floor(i / fichiers.length)
+            const urls = horloge(f, k + 1)
+            const img = document.createElement('img')
+            img.src = urls[k % urls.length]
+            img.alt = ''
+            el.appendChild(img)
+          }
+
+          scene.appendChild(el)
+          cartes.push({
+            el,
+            x: d.x,
+            y: d.y,
+            col: d.col,
+            ordre: d.ordre,
+            rangee: d.row,
+            hero: estHero,
+            portee,
+            largeur,
+            hauteur
+          })
+        }
+        image(tempsLecture % periode())
       }
 
       /* -------------------------------------------------------------- animation */
 
-      const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
       const borne = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
+      const melange = (a, b, x) => a + (b - a) * x
 
-      /** Duree d'une boucle complete, retards d'ouverture et de fermeture compris. */
+      /** Courbe commune aux quatre gestes. */
+      function courbe(x) {
+        x = borne(x)
+        if (reglages.rythme === 'regulier') return x
+        if (reglages.rythme === 'vif') {
+          return x < 0.5 ? 8 * x ** 4 : 1 - (-2 * x + 2) ** 4 / 2
+        }
+        // Smootherstep : vitesse et acceleration nulles aux deux extremites.
+        return x * x * x * (x * (x * 6 - 15) + 10)
+      }
+
+      /** Ramene un centre dans la bande sans saut visible a l'interieur. */
+      function reboucle(x, centre, portee) {
+        return centre + ((((x - centre + portee / 2) % portee) + portee) % portee) - portee / 2
+      }
+
+      /** Duree d'une boucle complete. */
       function periode() {
-        const s = reglages.stagger * Math.max(reglages.ouvre, reglages.repli)
-        return reglages.ouvre + reglages.tenue + reglages.repli + s
+        return reglages.repos + reglages.ouvre + reglages.tenue + reglages.repli
+      }
+
+      /**
+       * Trajectoire de la variante « depuis le dos ».
+       *
+       * Les cartes cachees passent d'abord au-dessus de la couverture, rangee par
+       * rangee. La couverture suit un trajet distinct : elle descend avant de
+       * partir a droite, et reste devant tout le paquet jusqu'a sa case finale.
+       */
+      function ouvertureDos(c, local, cx, cy) {
+        const ligne = reglages.rows === 1 ? 0 : c.rangee / (reglages.rows - 1)
+        const retardLigne = ligne * reglages.ouvre * 0.2
+        const retardCarte = c.ordre * reglages.stagger * 0.55
+        const retard = Math.min(retardLigne + retardCarte, reglages.ouvre * 0.42)
+        const brut = borne(
+          (local - retard) / Math.max(reglages.ouvre - retard, 0.05)
+        )
+        const p = courbe(brut)
+        let x
+        let y
+
+        if (c.hero) {
+          // La couverture tombe d'abord, puis glisse vers la case en bas a droite.
+          const tombe = courbe(p / 0.72)
+          const partADroite = courbe((p - 0.16) / 0.84)
+          x = melange(cx, c.x, partADroite)
+          y = melange(cy, c.y, tombe)
+        } else {
+          // Bezier quadratique : toutes les cartes sortent par-dessus la pile,
+          // puis redescendent vers leur rangee. Les rangees hautes partent avant.
+          const sommet = cy - c.hauteur * (0.72 + (1 - ligne) * 0.24)
+          const q = 1 - p
+          const eventail = courbe((p - 0.04) / 0.96)
+          x = melange(cx, c.x, eventail)
+          y = q * q * cy + 2 * q * p * sommet + p * p * c.y
+        }
+
+        const signe = c.hero || c.col >= 0 ? 1 : -1
+        const rotation = reglages.inclinaison * signe * Math.sin(Math.PI * brut)
+
+        return {
+          x,
+          y,
+          ouvert: p,
+          opacite: c.hero ? 1 : courbe(p / 0.16),
+          echelle: melange(1, reglages.pile, p),
+          rotation
+        }
       }
 
       function image(t) {
-        const S = reglages.stagger * Math.max(reglages.ouvre, reglages.repli)
-        const T = periode()
+        const cx = scene.clientWidth / 2
+        const cy = scene.clientHeight / 2
+        const debutOuvre = reglages.repos
+        const debutGlisse = debutOuvre + reglages.ouvre
+        const debutRepli = debutGlisse + reglages.tenue
 
         for (const c of cartes) {
-          // Le retard d'ouverture et celui de fermeture sont MUTUELLEMENT inverses :
-          // la vague repart dans l'autre sens au repli, sinon les cartes arrivees en
-          // dernier repartiraient en premier et le mouvement se croiserait.
-          const ouverture = ease(borne((t - c.coin * S) / reglages.ouvre))
-          const fermeture = ease(
-            borne((t - (reglages.ouvre + reglages.tenue + (1 - c.coin) * S)) / reglages.repli)
-          )
-          // p = 1 : carte posee sur sa case. p = 0 : carte repoussee hors champ.
-          const p = ouverture * (1 - fermeture)
-          const k = 1 - p
+          const sens = c.rangee % 2 === 0 ? 1 : -1
+          let x = cx
+          let y = cy
+          let ouvert = 0
+          let opacite = c.hero ? 1 : 0
+          let echelle = null
+          let rotation = null
 
-          const pousse = reglages.recul * k
-          // Le recul et le grossissement sont deux fonctions DISTINCTES de k, et
-          // c'est necessaire : au milieu de l'entree la reference montre un mur
-          // dense ou les cartes se chevauchent, donc des cartes grosses encore en
-          // place, alors qu'aux deux extremites elle montre un ecran vide, donc des
-          // cartes loin. Un recul seulement proportionnel a k vidait l'ecran des la
-          // moitie de l'entree ; en k au cube il ne mord qu'a la toute fin, et le
-          // grossissement, lui, reste lineaire pour faire le chevauchement.
-          const r3 = k * k * k
-          // Une carte quitte l'ecran dans la direction ou elle se trouve par rapport
-          // au centre : les rangees sortent donc par les cotes et les colonnes par
-          // le haut et le bas, ce qui est ce que montre la reference.
-          // La derive est monotone sur la boucle : elle repart de zero au
-          // recommencement, quand toutes les cartes sont hors champ et que la
-          // discontinuite ne se voit donc pas. La reserve de colonnes l'absorbe.
-          // Sens alterne, et c'est la rangee du HAUT qui va vers la gauche : releve
-          // sur la reference, ou la rangee 0 recule pendant que la rangee 1 avance.
-          const glisse = (c.rangee % 2 ? 1 : -1) * reglages.derive * pasCourant.x * t
-          const tx = glisse + c.ux * (c.loin + pasCourant.x * 0.5) * reglages.recul * r3
-          const ty = c.uy * (c.loin + pasCourant.y * 0.5) * reglages.recul * r3
-          const echelle = 1 + GROSSIT * pousse
+          if (t >= debutOuvre && t < debutGlisse) {
+            const local = t - debutOuvre
+            if (reglages.mode === 'dos') {
+              const trajet = ouvertureDos(c, local, cx, cy)
+              x = trajet.x
+              y = trajet.y
+              ouvert = trajet.ouvert
+              opacite = trajet.opacite
+              echelle = trajet.echelle
+              rotation = trajet.rotation
+            } else {
+              // Branche historique conservee telle quelle.
+              const retard = Math.min(c.ordre * reglages.stagger, reglages.ouvre * 0.35)
+              const eventail = courbe(
+                (local - retard) / Math.max(reglages.ouvre * FIN_EVENTAIL - retard, 0.05)
+              )
+              const rangees = courbe(
+                (local - reglages.ouvre * DEBUT_RANGEES) /
+                Math.max(reglages.ouvre * (1 - DEBUT_RANGEES), 0.05)
+              )
+              x = melange(cx, c.x, eventail)
+              y = melange(cy, c.y, rangees)
+              ouvert = eventail
+              opacite = c.hero ? 1 : courbe(eventail / FONDU_PILE)
+            }
+          } else if (t >= debutGlisse && t < debutRepli) {
+            const glisse = sens * reglages.derive * pasCourant.x * (t - debutGlisse)
+            x = reboucle(c.x + glisse, cx, c.portee)
+            y = c.y
+            ouvert = 1
+            opacite = 1
+          } else if (t >= debutRepli) {
+            const tempsRepli = t - debutRepli
+            // La derive ne s'arrete pas au debut du rangement. Chaque rangee
+            // poursuit sa trajectoire dans le meme sens pendant qu'elle converge
+            // vers le centre, ce qui conserve la vitesse au raccord.
+            const glisseContinue = sens * reglages.derive * pasCourant.x *
+              (reglages.tenue + tempsRepli)
+            const xEnMouvement = reboucle(c.x + glisseContinue, cx, c.portee)
+            const u = borne((t - debutRepli) / reglages.repli)
+            if (reglages.modeRepli === 'rangees') {
+              // Chaque rangee finit presque son trajet avant que la suivante ne
+              // parte. La carte de couverture, dans la derniere, ferme la pile.
+              const dureeRangee = 0.32
+              const pasRangee = reglages.rows > 1
+                ? (FIN_EMPILEMENT - dureeRangee) / (reglages.rows - 1)
+                : 0
+              const debutRangee = c.rangee * pasRangee
+              const rangee = courbe((u - debutRangee) / dureeRangee)
+              x = melange(xEnMouvement, cx, rangee)
+              y = melange(c.y, cy, rangee)
+              ouvert = 1 - rangee
+              opacite = c.hero
+                ? 1
+                : 1 - courbe((rangee - 0.82) / 0.18)
+            } else {
+              // Branche historique conservee telle quelle.
+              const rapprochement = courbe(u / FIN_RAPPROCHEMENT)
+              const empilement = courbe(
+                (u - DEBUT_EMPILEMENT) / (FIN_EMPILEMENT - DEBUT_EMPILEMENT)
+              )
+              x = melange(xEnMouvement, cx, empilement)
+              y = melange(c.y, cy, rapprochement)
+              ouvert = 1 - empilement
+              opacite = c.hero
+                ? 1
+                : 1 - courbe((empilement - (1 - FONDU_PILE)) / FONDU_PILE)
+            }
+            // Les cartes gardent leur petite taille pendant tout le rangement.
+            // Une fois la pile fermee et les doublons masques, la derniere carte
+            // visible retrouve seule sa taille normale.
+            const retourTaille = courbe(
+              (u - FIN_EMPILEMENT) / (1 - FIN_EMPILEMENT)
+            )
+            echelle = c.hero
+              ? melange(reglages.pile, 1, retourTaille)
+              : reglages.pile
+          }
 
+          const signeAngle = c.hero || c.rangee % 2 === 0 ? 1 : -1
+          if (echelle === null) echelle = melange(1, reglages.pile, ouvert)
+          if (rotation === null) rotation = reglages.angle * (1 - ouvert) * signeAngle
+          const tx = x - c.el.offsetWidth / 2
+          const ty = y - c.el.offsetHeight / 2
+          c.el.style.visibility = opacite < 0.001 ? 'hidden' : 'visible'
+          c.el.style.opacity = opacite.toFixed(4)
           c.el.style.transform =
-            `translate(${tx.toFixed(1)}px,${ty.toFixed(1)}px) ` +
-            `rotate(${(reglages.angle * pousse).toFixed(2)}deg) scale(${echelle.toFixed(4)})`
+            `translate3d(${tx.toFixed(1)}px,${ty.toFixed(1)}px,0) ` +
+            `rotate(${rotation.toFixed(2)}deg) scale(${echelle.toFixed(4)})`
+          c.rendu = { x, y, rotation, echelle, opacite }
         }
-        return T
       }
 
-      let periodeCourante = 0
       function boucle(now) {
-        if (joue) {
-          periodeCourante = image(((now - t0) / 1000) % periode())
+        if (exporteVideo) {
+          requestAnimationFrame(boucle)
+          return
+        }
+        if (tempsFixe !== null && Number.isFinite(tempsFixe)) {
+          image(((tempsFixe % periode()) + periode()) % periode())
+        } else {
+          const delta = Math.min((now - dernierInstant) / 1000, 0.1)
+          dernierInstant = now
+          if (joue) tempsLecture = (tempsLecture + delta) % periode()
+          image(tempsLecture)
         }
         requestAnimationFrame(boucle)
       }
@@ -573,21 +961,63 @@
 
       const majPose = () => {
         pose()
-        t0 = performance.now()
+        tempsLecture = 0
+        dernierInstant = performance.now()
+      }
+
+      /** Pendant un reglage de grille, rester sur une vue pleine et immobile. */
+      const figeGrille = () => {
+        joue = false
+        document.getElementById('lecture').textContent = '播放'
+        tempsLecture = reglages.repos + reglages.ouvre
+        dernierInstant = performance.now()
+        pose()
+        image(tempsLecture)
+      }
+
+      const montreInclinaison = () => {
+        tempsLecture = reglages.repos + reglages.ouvre * 0.44
+        dernierInstant = performance.now()
       }
 
       const rappels = [
-        curseur('rows', 'rows', majPose, (v) => `${v} 行`),
-        curseur('gap', 'gap', majPose, (v) => `${Math.round(v * 100)}%`),
-        curseur('ratio', 'ratio', majPose, (v) => v.toFixed(2)),
-        curseur('derive', 'derive', majPose, (v) => (v ? `${v.toFixed(2)} 格/秒` : '关')),
+        curseur('rows', 'rows', figeGrille, (v) => `${v} 行`),
+        curseur('gap', 'gap', figeGrille, (v) => `${Math.round(v * 100)}%`),
+        curseur('size', 'size', figeGrille, (v) => `${Math.round(v * 100)}%`),
+        curseur('derive', 'derive', null, (v) => (v ? `${v.toFixed(2)} 格/秒` : '关')),
+        curseur('inclinaison', 'inclinaison', montreInclinaison, (v) => `${v}°`),
+        curseur('repos', 'repos', null, (v) => `${v.toFixed(1)} s`),
         curseur('ouvre', 'ouvre', null, (v) => `${v.toFixed(1)} s`),
         curseur('tenue', 'tenue', null, (v) => `${v.toFixed(1)} s`),
         curseur('repli', 'repli', null, (v) => `${v.toFixed(1)} s`),
-        curseur('stagger', 'stagger', null, (v) => (v ? `${Math.round(v * 100)}%` : '关')),
-        curseur('recul', 'recul', null, (v) => `${v.toFixed(1)} 格`),
+        curseur('stagger', 'stagger', null, (v) => (v ? `${v.toFixed(2)} s` : '关')),
+        curseur('pile', 'pile', null, (v) => `${Math.round(v * 100)}%`),
         curseur('angle', 'angle', null, (v) => `${v}°`)
       ]
+
+      const mode = document.getElementById('mode')
+      const optionsDos = document.getElementById('options-dos')
+      mode.value = reglages.mode
+      optionsDos.hidden = reglages.mode !== 'dos'
+      mode.addEventListener('change', () => {
+        reglages.mode = mode.value
+        optionsDos.hidden = reglages.mode !== 'dos'
+        majPose()
+      })
+
+      const modeRepli = document.getElementById('mode-repli')
+      modeRepli.value = reglages.modeRepli
+      modeRepli.addEventListener('change', () => {
+        reglages.modeRepli = modeRepli.value
+        tempsLecture = reglages.repos + reglages.ouvre + reglages.tenue
+        dernierInstant = performance.now()
+      })
+
+      const rythme = document.getElementById('rythme')
+      rythme.value = reglages.rythme
+      rythme.addEventListener('change', () => {
+        reglages.rythme = rythme.value
+      })
 
       const fond = document.getElementById('fond')
       fond.value = reglages.fond
@@ -601,20 +1031,233 @@
         e.target.textContent = joue ? '暂停' : '播放'
       })
       document.getElementById('rejouer').addEventListener('click', () => {
-        t0 = performance.now()
+        tempsLecture = 0
+        dernierInstant = performance.now()
       })
 
-      cle.addEventListener('click', () => {
-        panneau.classList.remove('ferme')
-        cle.hidden = true
+      const etatExport = document.getElementById('etat-export')
+      document.getElementById('taille-video').value = CONFIG_PAR_DEFAUT.video.taille
+      document.getElementById('fps-video').value = String(CONFIG_PAR_DEFAUT.video.fps)
+
+      function nomDate() {
+        return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      }
+
+      function telecharge(blob, nom) {
+        const url = URL.createObjectURL(blob)
+        const lien = document.createElement('a')
+        lien.href = url
+        lien.download = nom
+        document.body.appendChild(lien)
+        lien.click()
+        lien.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+
+      document.getElementById('sauver-json').addEventListener('click', () => {
+        const sauvegarde = {
+          version: 1,
+          date: new Date().toISOString(),
+          reglages: { ...reglages },
+          video: {
+            taille: document.getElementById('taille-video').value,
+            fps: Number(document.getElementById('fps-video').value)
+          },
+          carteInitiale: { ...CARTE_INITIALE },
+          cartes: fichiers.map((f) => f.nom)
+        }
+        telecharge(
+          new Blob([JSON.stringify(sauvegarde, null, 2)], { type: 'application/json' }),
+          `cardbot-reglages-${nomDate()}.json`
+        )
+        etatExport.textContent = '设置 JSON 已下载'
       })
+
+      document.getElementById('exporter-mp4').addEventListener('click', async (e) => {
+        const bouton = e.currentTarget
+        const encodageNatif = typeof VideoEncoder !== 'undefined'
+        if (!encodageNatif && !window.HME?.createH264MP4Encoder) {
+          alert('MP4 编码器没有加载成功，请刷新页面后重试。')
+          return
+        }
+
+        const jouaitAvant = joue
+        const tempsAvant = tempsLecture
+        const styleSceneAvant = scene.getAttribute('style')
+        const [largeurVideo, hauteurVideo] = document.getElementById('taille-video')
+          .value.split('x').map(Number)
+        const fps = Number(document.getElementById('fps-video').value)
+        const canevas = document.createElement('canvas')
+        canevas.width = largeurVideo
+        canevas.height = hauteurVideo
+        let encodeurMp4 = null
+        let sortieMp4 = null
+        let sourceVideo = null
+        let cibleMp4 = null
+        bouton.disabled = true
+        exporteVideo = true
+        joue = false
+        etatExport.textContent = '正在准备离屏渲染…'
+
+        try {
+          // La scene est reconstruite hors ecran aux dimensions EXACTES de la
+          // video. Le panneau, le curseur et le navigateur ne sont jamais filmes.
+          scene.style.cssText =
+            `position:fixed;left:-100000px;top:0;right:auto;bottom:auto;` +
+            `width:${largeurVideo}px;height:${hauteurVideo}px;opacity:0;pointer-events:none`
+          pose()
+          await Promise.all(cartes.map((c) => {
+            const img = c.el.querySelector('img')
+            return img?.decode ? img.decode().catch(() => {}) : Promise.resolve()
+          }))
+
+          etatExport.textContent = '正在加载 MP4 编码器…'
+          const debit = largeurVideo >= 1920
+            ? (fps === 60 ? 20_000 : 12_000)
+            : (fps === 60 ? 12_000 : 8_000)
+          if (encodageNatif) {
+            // WebCodecs produit directement les vraies images H.264. Cela evite
+            // le premier macrobloc non initialise du vieil encodeur WASM en 1080p.
+            cibleMp4 = new BufferTarget()
+            sortieMp4 = new Output({
+              format: new Mp4OutputFormat(),
+              target: cibleMp4
+            })
+            sourceVideo = new CanvasSource(canevas, {
+              codec: 'avc',
+              bitrate: debit * 1000,
+              keyFrameInterval: 2,
+              latencyMode: 'quality'
+            })
+            sortieMp4.addVideoTrack(sourceVideo, { frameRate: fps })
+            await sortieMp4.start()
+          } else {
+            encodeurMp4 = await window.HME.createH264MP4Encoder()
+            encodeurMp4.width = largeurVideo
+            encodeurMp4.height = hauteurVideo
+            encodeurMp4.frameRate = fps
+            encodeurMp4.speed = 10
+            encodeurMp4.groupOfPictures = fps * 2
+            encodeurMp4.kbps = debit
+            encodeurMp4.initialize()
+          }
+
+          const duree = periode()
+          const nombreImages = Math.round(duree * fps)
+          const debutReel = performance.now()
+          let pourcentageAffiche = -1
+
+          for (let numero = 0; numero < nombreImages; numero++) {
+            const tempsImage = numero / fps
+            image(tempsImage)
+            dessineCanevas(canevas)
+            if (sourceVideo) {
+              await sourceVideo.add(tempsImage, 1 / fps)
+            } else {
+              const pixels = canevas.getContext('2d', { alpha: false })
+                .getImageData(0, 0, largeurVideo, hauteurVideo).data
+              encodeurMp4.addFrameRgba(pixels)
+            }
+
+            const pourcentage = Math.floor((numero + 1) / nombreImages * 10) * 10
+            if (pourcentage !== pourcentageAffiche) {
+              pourcentageAffiche = pourcentage
+              etatExport.textContent =
+                `正在编码左侧画面 ${largeurVideo}×${hauteurVideo} · ${fps} FPS · ` +
+                `${pourcentage}%`
+            }
+
+            // Le mouvement des yeux vit dans les SVG eux-memes. On garde leur
+            // horloge reelle tout en donnant a chaque image un timestamp exact.
+            const attente = debutReel + (numero + 1) * 1000 / fps - performance.now()
+            if (attente > 1) {
+              await new Promise((resolve) => setTimeout(resolve, attente))
+            } else {
+              // Le compresseur logiciel peut etre plus lent que le temps reel.
+              // Ceder la main garde les controles et le pourcentage reactifs.
+              await new Promise((resolve) => setTimeout(resolve, 0))
+            }
+          }
+          let blob
+          if (sortieMp4) {
+            await sortieMp4.finalize()
+            blob = new Blob([cibleMp4.buffer], { type: 'video/mp4' })
+          } else {
+            encodeurMp4.finalize()
+            const donnees = encodeurMp4.FS.readFile(encodeurMp4.outputFilename)
+            blob = new Blob([donnees], { type: 'video/mp4' })
+          }
+
+          if (!blob.size) throw new Error('没有生成视频画面')
+          telecharge(
+            blob,
+            `cardbot-canvas-only-${largeurVideo}x${hauteurVideo}-${fps}fps-` +
+              `${nomDate()}.mp4`
+          )
+          etatExport.textContent =
+            `MP4 已下载：仅左侧画面 · ${largeurVideo}×${hauteurVideo} · ${fps} FPS`
+        } catch (err) {
+          console.error('视频导出失败', err)
+          etatExport.textContent = `导出失败：${err.message}`
+        } finally {
+          encodeurMp4?.delete()
+          if (styleSceneAvant === null) scene.removeAttribute('style')
+          else scene.setAttribute('style', styleSceneAvant)
+          exporteVideo = false
+          joue = jouaitAvant
+          tempsLecture = tempsAvant
+          dernierInstant = performance.now()
+          pose()
+          document.getElementById('lecture').textContent = joue ? '暂停' : '播放'
+          bouton.disabled = false
+        }
+      })
+
+      /** Dessine l'etat DOM courant sur la vraie image video. */
+      function dessineCanevas(canevas) {
+        const ctx = canevas.getContext('2d', { alpha: false })
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.globalAlpha = 1
+        ctx.shadowColor = 'transparent'
+        ctx.fillStyle = reglages.fond
+        ctx.fillRect(0, 0, canevas.width, canevas.height)
+
+        const ordrePeinture = [...cartes]
+          .filter((c) => c.rendu?.opacite > 0.001)
+          .sort((a, b) => Number(a.el.style.zIndex) - Number(b.el.style.zIndex))
+
+        for (const c of ordrePeinture) {
+          const img = c.el.querySelector('img')
+          if (!img?.complete) continue
+          const { x, y, rotation, echelle, opacite } = c.rendu
+          ctx.save()
+          ctx.globalAlpha = opacite
+          ctx.translate(x, y)
+          ctx.rotate(rotation * Math.PI / 180)
+          ctx.scale(echelle, echelle)
+          ctx.shadowColor = 'rgb(0 0 0 / 58%)'
+          ctx.shadowBlur = 14
+          ctx.shadowOffsetY = 5
+          ctx.drawImage(img, -c.largeur / 2, -c.hauteur / 2, c.largeur, c.hauteur)
+          ctx.restore()
+        }
+
+      }
+
+      function fermePanneau(ferme) {
+        panneau.classList.toggle('ferme', ferme)
+        document.body.classList.toggle('panneau-ferme', ferme)
+        cle.hidden = ferme && apercu.has('preview') ? true : !ferme
+        requestAnimationFrame(pose)
+      }
+
+      cle.addEventListener('click', () => fermePanneau(false))
       // Echap range le panneau pour regarder l'effet en grand. Il est alors
       // rappele par le bouton `#cle`, sans quoi il n'y aurait plus aucun moyen de
       // le rouvrir — un panneau qu'on ne peut que fermer n'est pas un reglage.
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return
-        panneau.classList.toggle('ferme')
-        cle.hidden = !panneau.classList.contains('ferme')
+        fermePanneau(!panneau.classList.contains('ferme'))
       })
 
       /* --------------------------------------------------------------- fichiers */
@@ -639,6 +1282,7 @@
       async function ajoute(fs) {
         for (const f of fs) {
           try {
+            if (f.name === '扑克牌-墨黑-专注.svg') continue
             const brut = await f.text()
             const { texte } = recadre(brut)
             // L'ancien fichier du meme nom est remplace, horloges refermees : sans
@@ -669,8 +1313,11 @@
         e.target.value = ''
       })
       vider.addEventListener('click', () => {
-        for (const f of fichiers) for (const u of f.horloges) URL.revokeObjectURL(u)
-        fichiers = []
+        const verrouilles = fichiers.filter((f) => f.verrouille)
+        for (const f of fichiers) {
+          if (!f.verrouille) for (const u of f.horloges) URL.revokeObjectURL(u)
+        }
+        fichiers = verrouilles
         pose()
         reliste()
       })
@@ -694,8 +1341,8 @@
         minuteur = setTimeout(majPose, 150)
       })
 
-      pose()
       reliste()
+      chargeBibliotheque()
       requestAnimationFrame(boucle)
     </script>
   </body>
