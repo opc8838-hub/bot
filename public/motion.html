@@ -1,0 +1,636 @@
+<!doctype html>
+<!--
+  Editeur de l'effet « rangees qui s'ecartent » : des cartes posees en pile au
+  centre s'ouvrent en rangees, tiennent, puis se rassemblent.
+
+  Chaque carte porte un SVG ANIME televerse, et non une image fixe. C'est toute la
+  difference avec la reference : le mouvement d'ensemble et le mouvement propre de
+  chaque bot tournent en meme temps.
+
+  Page autonome, dans `public/` et non dans `src/` : elle ne partage aucun etat
+  avec l'editeur Vue, et un fichier qui ne passe pas par le build n'a aucune raison
+  d'aller dans l'arbre des sources. Les chemins y sont relatifs, donc elle repond
+  aussi bien sur `/motion.html` en developpement que sur `/bot/motion.html` une
+  fois publiee, sans que `--base` ait a etre connaitre ici.
+
+  Les libelles sont en chinois : cette page est un outil personnel, son seul
+  lecteur est l'auteur du fork. Les commentaires, eux, suivent la convention du
+  depot — francais, sans accents.
+
+  Pourquoi une URL de blob par carte, et non un seul SVG reutilise : les exports
+  animes definissent tous `@keyframes oeil0` et `.oeil0`, des noms GLOBAUX. Deux
+  exports inline dans le meme document se ecraseraient l'un l'autre. Dans une
+  `<img>`, chaque SVG est son propre document, donc plus de collision — et deux
+  URL distinctes donnent deux horloges distinctes, ce qui evite que tout le mur
+  cligne a l'unisson.
+-->
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>卡牌动效编辑器 · bloub</title>
+    <style>
+      :root {
+        --fond: #0b0b0d;
+        --panneau: #17171b;
+        --bord: #2a2a31;
+        --texte: #ececf1;
+        --faible: #8b8b96;
+        --accent: #f97316;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--fond);
+        color: var(--texte);
+        font: 13px/1.5 system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        overflow: hidden;
+      }
+
+      /* La scene occupe tout l'ecran : c'est elle qu'on regarde, le panneau
+         n'est qu'un reglage. */
+      #scene {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      #scene.survol {
+        outline: 2px dashed var(--accent);
+        outline-offset: -10px;
+      }
+      .carte {
+        position: absolute;
+        /* `transform-origin` au centre : la pose empilee se decrit alors comme un
+           simple decalage vers le centre, sans avoir a recalculer un coin. */
+        transform-origin: 50% 50%;
+        border-radius: 4px;
+        overflow: hidden;
+        background: #1c1c22;
+      }
+      .carte img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        /* le viewBox a ete recadre sur la silhouette, l'etirement est donc exact */
+        object-fit: fill;
+      }
+
+      #panneau {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 264px;
+        max-height: calc(100% - 32px);
+        overflow-y: auto;
+        padding: 16px;
+        border: 1px solid var(--bord);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--panneau) 92%, transparent);
+        backdrop-filter: blur(12px);
+      }
+      #panneau.ferme {
+        display: none;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 14px;
+      }
+      .note {
+        margin: 0 0 14px;
+        color: var(--faible);
+        font-size: 11px;
+      }
+      fieldset {
+        margin: 0 0 14px;
+        padding: 10px 12px 12px;
+        border: 1px solid var(--bord);
+        border-radius: 8px;
+      }
+      legend {
+        padding: 0 4px;
+        color: var(--faible);
+        font-size: 11px;
+      }
+      label {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 8px;
+        color: var(--faible);
+      }
+      label:first-of-type {
+        margin-top: 0;
+      }
+      label b {
+        color: var(--texte);
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+      input[type='range'] {
+        width: 100%;
+        margin: 2px 0 0;
+        accent-color: var(--accent);
+      }
+      input[type='color'] {
+        width: 42px;
+        height: 22px;
+        padding: 0;
+        border: 1px solid var(--bord);
+        border-radius: 4px;
+        background: none;
+      }
+      .boutons {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      button {
+        flex: 1 1 auto;
+        padding: 7px 10px;
+        border: 1px solid var(--bord);
+        border-radius: 6px;
+        background: #22222a;
+        color: var(--texte);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #liste {
+        margin: 8px 0 0;
+        padding: 0;
+        list-style: none;
+        color: var(--faible);
+        font-size: 11px;
+      }
+      #liste li {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 2px 0;
+      }
+      #liste li span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #cle {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        padding: 7px 10px;
+        border: 1px solid var(--bord);
+        border-radius: 6px;
+        background: #22222a;
+        color: var(--texte);
+        font: inherit;
+        cursor: pointer;
+      }
+      #cle.ferme {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene"></div>
+    <button id="cle" hidden>显示设置</button>
+
+    <aside id="panneau">
+      <h1>卡牌动效编辑器</h1>
+      <p class="note">上传能动的小卡 SVG，整体散开的同时每张卡自己也在动。</p>
+
+      <fieldset>
+        <legend>卡牌</legend>
+        <div class="boutons">
+          <button id="choisir">上传 SVG</button>
+          <button id="vider" disabled>清空</button>
+        </div>
+        <input id="fichiers" type="file" accept=".svg,image/svg+xml" multiple hidden />
+        <ul id="liste"></ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>排版</legend>
+        <label>行数 <b id="v-rows"></b></label>
+        <input id="rows" type="range" min="1" max="8" step="1" />
+        <label>间距 <b id="v-gap"></b></label>
+        <input id="gap" type="range" min="0" max="60" step="1" />
+        <label>卡片长宽比 <b id="v-ratio"></b></label>
+        <input id="ratio" type="range" min="1" max="2" step="0.05" />
+        <label>错行 <b id="v-brick"></b></label>
+        <input id="brick" type="range" min="0" max="0.5" step="0.05" />
+      </fieldset>
+
+      <fieldset>
+        <legend>动效</legend>
+        <label>散开 <b id="v-ouvre"></b></label>
+        <input id="ouvre" type="range" min="0.2" max="4" step="0.1" />
+        <label>停留 <b id="v-tenue"></b></label>
+        <input id="tenue" type="range" min="0" max="8" step="0.1" />
+        <label>收拢 <b id="v-repli"></b></label>
+        <input id="repli" type="range" min="0.2" max="4" step="0.1" />
+        <label>交错 <b id="v-stagger"></b></label>
+        <input id="stagger" type="range" min="0" max="1" step="0.05" />
+        <label>堆叠角度 <b id="v-angle"></b></label>
+        <input id="angle" type="range" min="-40" max="0" step="1" />
+        <label>堆叠缩放 <b id="v-scale"></b></label>
+        <input id="scale" type="range" min="0.05" max="1" step="0.05" />
+      </fieldset>
+
+      <fieldset>
+        <legend>播放</legend>
+        <div class="boutons">
+          <button id="lecture">暂停</button>
+          <button id="rejouer">重播</button>
+        </div>
+        <label>背景 <b></b></label>
+        <input id="fond" type="color" />
+      </fieldset>
+    </aside>
+
+    <script type="module">
+      /*
+       * Tout est en clair ici : pas de build, pas de dependance, pas de cadre.
+       * La page doit rester lisible telle quelle dans le depot.
+       */
+      const NS = 'http://www.w3.org/2000/svg'
+
+      /* Nombre maximal d'URL distinctes par fichier televerse. Chaque URL est un
+         document SVG anime de plus pour le navigateur : au-dela, les cartes se
+         partagent les horloges existantes, ce qui coute un peu de desynchronisation
+         et economise beaucoup de rendu. */
+      const PLAFOND_HORLOGES = 24
+
+      const scene = document.getElementById('scene')
+      const panneau = document.getElementById('panneau')
+      const cle = document.getElementById('cle')
+
+      const reglages = {
+        rows: 4,
+        gap: 16,
+        ratio: 1.4,
+        brick: 0.5,
+        ouvre: 1.4,
+        tenue: 2.6,
+        repli: 1.1,
+        stagger: 0.45,
+        angle: -16,
+        scale: 0.3,
+        fond: '#0b0b0d'
+      }
+
+      /** Les SVG televerses : { nom, texte, horloges }. */
+      let fichiers = []
+      /** Les cartes posees : { el, img, x, y, w, h, retard, depart }. */
+      let cartes = []
+      let joue = true
+      let t0 = performance.now()
+
+      /* ------------------------------------------------------------- recadrage */
+
+      /**
+       * Recadre un export sur la silhouette qu'il contient.
+       *
+       * Les exports sortent en 316x316 alors que la carte n'en occupe que 143x200 :
+       * posee telle quelle dans une grille, chaque carte traine plus de la moitie
+       * de sa boite en vide. On mesure donc la silhouette pour reecrire le viewBox,
+       * ce qui rend la carte bord a bord et l'etirement `object-fit: fill` exact.
+       */
+      function recadre(texte) {
+        const balise = texte.match(/<svg[^>]*>/)
+        if (!balise) throw new Error('svg introuvable')
+        const vb = balise[0].match(/viewBox="([^"]*)"/)
+        if (!vb) throw new Error('viewBox introuvable')
+
+        const masque = texte.match(/<mask[\s\S]*?<\/mask>/)
+        if (!masque) throw new Error('masque introuvable')
+        // Les yeux portent une classe `oeilN` apres l'export anime : le corps est
+        // donc la premiere forme qui n'en a pas.
+        const formes = masque[0].match(/<path[^>]*>/g) || []
+        const corps = formes.find((f) => !/class="oeil/.test(f))
+        if (!corps) throw new Error('corps introuvable')
+        const d = corps.match(/d="([^"]*)"/)
+        if (!d) throw new Error('trace introuvable')
+
+        // La sonde est un SVG a part, avec la meme boite : mesurer la forme DANS le
+        // `<defs>` d'origine ne marche pas, un contenu de `defs` n'etant pas rendu.
+        const sonde = document.createElementNS(NS, 'svg')
+        sonde.setAttribute('viewBox', vb[1])
+        sonde.style.cssText = 'position:fixed;left:-99999px;top:0;width:8px;height:8px'
+        const trace = document.createElementNS(NS, 'path')
+        trace.setAttribute('d', d[1])
+        sonde.appendChild(trace)
+        document.body.appendChild(sonde)
+        let boite
+        try {
+          boite = trace.getBBox()
+        } finally {
+          sonde.remove()
+        }
+        if (!boite.width || !boite.height) throw new Error('silhouette vide')
+
+        const cadre = `${boite.x} ${boite.y} ${boite.width} ${boite.height}`
+        const neuve = balise[0]
+          .replace(/viewBox="[^"]*"/, `viewBox="${cadre}"`)
+          .replace(/width="[^"]*"/, `width="${boite.width}"`)
+          .replace(/height="[^"]*"/, `height="${boite.height}"`)
+        return { texte: texte.replace(balise[0], neuve), ratio: boite.height / boite.width }
+      }
+
+      /**
+       * Decale l'horloge d'un exemplaire.
+       *
+       * Chaque document SVG demarre son animation a l'instant ou il est cree : sans
+       * ce decalage, tout le mur de bots cligne a l'unisson, ce qui se voit tout de
+       * suite et ne ressemble a rien. Un `animation-delay` NEGATIF demarre
+       * l'animation en plein milieu du cycle, et chaque exemplaire entre donc a un
+       * point different.
+       */
+      function decale(texte, k) {
+        const d = texte.match(/animation-duration:([\d.]+)s/)
+        if (!d) return texte
+        const retard = -(k * Number(d[1])) / PLAFOND_HORLOGES
+        return texte.replace(
+          'animation-direction:alternate}',
+          `animation-direction:alternate;animation-delay:${retard.toFixed(3)}s}`
+        )
+      }
+
+      /** Ouvre les horloges manquantes d'un fichier, sans jamais les refermer. */
+      function horloge(f, n) {
+        while (f.horloges.length < Math.min(n, PLAFOND_HORLOGES)) {
+          const k = f.horloges.length
+          const url = URL.createObjectURL(
+            new Blob([decale(f.texte, k)], { type: 'image/svg+xml' })
+          )
+          f.horloges.push(url)
+        }
+        return f.horloges
+      }
+
+      /* --------------------------------------------------------------- montage */
+
+      /**
+       * Pose la grille.
+       *
+       * Les cartes sont placees en absolu a leur position de rangee et c'est le
+       * `transform` qui les ramene vers la pile : la pose ouverte est alors
+       * l'identite, et une seule interpolation sert les deux sens.
+       */
+      function pose() {
+        const w = scene.clientWidth
+        const h = scene.clientHeight
+        for (const c of cartes) c.el.remove()
+        cartes = []
+
+        const debord = h * 0.25
+        const hauteur = (h + 2 * debord - (reglages.rows - 1) * reglages.gap) / reglages.rows
+        if (hauteur <= 4) return
+        const largeur = hauteur / reglages.ratio
+        const pas = largeur + reglages.gap
+        const cols = Math.ceil((w + 2 * debord) / pas) + 1
+        const gauche = (w - (cols * pas - reglages.gap)) / 2
+        const haut = -debord
+
+        // Le centre de la pile, et son rayon de dispersion pour l'ordre d'arrivee.
+        const cx = w / 2
+        const cy = h / 2
+        const portee = Math.hypot(cols * pas, reglages.rows * (hauteur + reglages.gap)) / 2
+
+        const total = cols * reglages.rows
+        for (let i = 0; i < total; i++) {
+          const col = i % cols
+          const row = Math.floor(i / cols)
+          const x = gauche + col * pas + (row % 2 ? reglages.brick * pas : 0)
+          const y = haut + row * (hauteur + reglages.gap)
+
+          const el = document.createElement('div')
+          el.className = 'carte'
+          el.style.cssText = `left:${x}px;top:${y}px;width:${largeur}px;height:${hauteur}px`
+
+          if (fichiers.length) {
+            const f = fichiers[i % fichiers.length]
+            const k = Math.floor(i / fichiers.length)
+            const urls = horloge(f, k + 1)
+            const img = document.createElement('img')
+            img.src = urls[k % urls.length]
+            img.alt = ''
+            el.appendChild(img)
+          }
+
+          scene.appendChild(el)
+          // L'onde part du coin haut-gauche : le retard suit la distance au coin,
+          // normalisee, donc l'ordre reste le meme quelle que soit la grille.
+          const coin = Math.hypot(x + largeur - gauche, y - haut) / portee
+          cartes.push({ el, x: x + largeur / 2, y: y + hauteur / 2, coin: Math.min(coin, 1) })
+        }
+
+        // La pile est au centre : chaque carte connait son decalage vers elle.
+        for (const c of cartes) {
+          c.dx = cx - c.x
+          c.dy = cy - c.y
+        }
+      }
+
+      /* -------------------------------------------------------------- animation */
+
+      const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+      const borne = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
+
+      /** Duree d'une boucle complete, retards d'ouverture et de fermeture compris. */
+      function periode() {
+        const s = reglages.stagger * Math.max(reglages.ouvre, reglages.repli)
+        return reglages.ouvre + reglages.tenue + reglages.repli + s
+      }
+
+      function image(t) {
+        const S = reglages.stagger * Math.max(reglages.ouvre, reglages.repli)
+        const T = periode()
+
+        for (const c of cartes) {
+          // Le retard d'ouverture et celui de fermeture sont MUTUELLEMENT inverses :
+          // la vague repart dans l'autre sens au repli, sinon les cartes qui sont
+          // sorties en dernier se coucheraient en premier et la pile se refermerait
+          // dans le desordre.
+          const ouverture = ease(borne((t - c.coin * S) / reglages.ouvre))
+          const fermeture = ease(
+            borne((t - (reglages.ouvre + reglages.tenue + (1 - c.coin) * S)) / reglages.repli)
+          )
+          const p = ouverture * (1 - fermeture)
+
+          const q = 1 - p
+          const angle = reglages.angle * (1 + c.coin * 0.6) * q
+          const echelle = reglages.scale + (1 - reglages.scale) * p
+          c.el.style.transform =
+            `translate(${(c.dx * q).toFixed(2)}px,${(c.dy * q).toFixed(2)}px) ` +
+            `rotate(${angle.toFixed(3)}deg) scale(${echelle.toFixed(4)})`
+        }
+        return T
+      }
+
+      let periodeCourante = 0
+      function boucle(now) {
+        if (joue) {
+          periodeCourante = image(((now - t0) / 1000) % periode())
+        }
+        requestAnimationFrame(boucle)
+      }
+
+      /* ------------------------------------------------------------- interface */
+
+      /** Cablage generique d'un curseur : `met` applique, `dit` formate la valeur. */
+      function curseur(id, cle, met, dit) {
+        const input = document.getElementById(id)
+        const valeur = document.getElementById('v-' + id)
+        const montre = () => {
+          input.value = String(reglages[cle])
+          valeur.textContent = dit(reglages[cle])
+        }
+        input.addEventListener('input', () => {
+          reglages[cle] = +input.value
+          valeur.textContent = dit(reglages[cle])
+          met?.()
+        })
+        montre()
+        return montre
+      }
+
+      const majPose = () => {
+        pose()
+        t0 = performance.now()
+      }
+
+      const rappels = [
+        curseur('rows', 'rows', majPose, (v) => `${v} 行`),
+        curseur('gap', 'gap', majPose, (v) => `${v} px`),
+        curseur('ratio', 'ratio', majPose, (v) => v.toFixed(2)),
+        curseur('brick', 'brick', majPose, (v) => (v ? `${Math.round(v * 100)}%` : '关')),
+        curseur('ouvre', 'ouvre', null, (v) => `${v.toFixed(1)} s`),
+        curseur('tenue', 'tenue', null, (v) => `${v.toFixed(1)} s`),
+        curseur('repli', 'repli', null, (v) => `${v.toFixed(1)} s`),
+        curseur('stagger', 'stagger', null, (v) => (v ? `${Math.round(v * 100)}%` : '关')),
+        curseur('angle', 'angle', null, (v) => `${v}°`),
+        curseur('scale', 'scale', null, (v) => `${v.toFixed(2)}×`)
+      ]
+
+      const fond = document.getElementById('fond')
+      fond.value = reglages.fond
+      fond.addEventListener('input', () => {
+        reglages.fond = fond.value
+        document.documentElement.style.setProperty('--fond', fond.value)
+      })
+
+      document.getElementById('lecture').addEventListener('click', (e) => {
+        joue = !joue
+        e.target.textContent = joue ? '暂停' : '播放'
+      })
+      document.getElementById('rejouer').addEventListener('click', () => {
+        t0 = performance.now()
+      })
+
+      cle.addEventListener('click', () => {
+        panneau.classList.remove('ferme')
+        cle.hidden = true
+      })
+      // Le panneau se range pour regarder l'effet en grand, et un clic sur la
+      // scene le fait revenir : sans cela, plus aucun moyen de le rouvrir.
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return
+        panneau.classList.toggle('ferme')
+        cle.hidden = !panneau.classList.contains('ferme')
+      })
+
+      /* --------------------------------------------------------------- fichiers */
+
+      const liste = document.getElementById('liste')
+      const vider = document.getElementById('vider')
+
+      function reliste() {
+        liste.innerHTML = ''
+        for (const f of fichiers) {
+          const li = document.createElement('li')
+          const nom = document.createElement('span')
+          nom.textContent = f.nom
+          const dim = document.createElement('span')
+          dim.textContent = `${f.horloges.length} 组`
+          li.append(nom, dim)
+          liste.appendChild(li)
+        }
+        vider.disabled = !fichiers.length
+      }
+
+      async function ajoute(fs) {
+        for (const f of fs) {
+          try {
+            const brut = await f.text()
+            const { texte } = recadre(brut)
+            // L'ancien fichier du meme nom est remplace, horloges refermees : sans
+            // cela, reteleverser un SVG corrige laisserait l'ancien en memoire et
+            // a l'ecran.
+            const vieux = fichiers.findIndex((x) => x.nom === f.name)
+            if (vieux >= 0) {
+              for (const u of fichiers[vieux].horloges) URL.revokeObjectURL(u)
+              fichiers.splice(vieux, 1)
+            }
+            fichiers.push({ nom: f.name, texte, horloges: [] })
+          } catch (err) {
+            // Un SVG qui n'est pas un export anime est signale, pas avale : c'est
+            // le seul retour dont dispose l'utilisateur sur un fichier refuse.
+            alert(`${f.name} 无法读取：${err.message}`)
+          }
+        }
+        pose()
+        reliste()
+        t0 = performance.now()
+      }
+
+      document.getElementById('choisir').addEventListener('click', () => {
+        document.getElementById('fichiers').click()
+      })
+      document.getElementById('fichiers').addEventListener('change', (e) => {
+        ajoute([...e.target.files])
+        e.target.value = ''
+      })
+      vider.addEventListener('click', () => {
+        for (const f of fichiers) for (const u of f.horloges) URL.revokeObjectURL(u)
+        fichiers = []
+        pose()
+        reliste()
+      })
+
+      // Le depot se fait sur la scene entiere : viser une carte qui bouge serait
+      // inutilisable.
+      scene.addEventListener('dragover', (e) => {
+        e.preventDefault()
+        scene.classList.add('survol')
+      })
+      scene.addEventListener('dragleave', () => scene.classList.remove('survol'))
+      scene.addEventListener('drop', (e) => {
+        e.preventDefault()
+        scene.classList.remove('survol')
+        ajoute([...e.dataTransfer.files].filter((f) => /\.svg$/i.test(f.name)))
+      })
+
+      let minuteur
+      window.addEventListener('resize', () => {
+        clearTimeout(minuteur)
+        minuteur = setTimeout(majPose, 150)
+      })
+
+      pose()
+      reliste()
+      requestAnimationFrame(boucle)
+    </script>
+  </body>
+</html>

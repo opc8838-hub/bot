@@ -146,6 +146,46 @@ const muted = ref<ViewId | null>(null)
           {{ item.label }}
         </span>
       </li>
+
+      <!--
+        Une PAGE a part, pas une vue : elle a son propre fichier, ne partage aucun
+        etat avec l'application et s'ouvre donc dans un onglet. La mettre dans
+        `ViewId` aurait demande un quatrieme panneau et fait passer l'avatar
+        au travers pour rien.
+
+        L'icone est la SEULE forme du projet qui soit dessinee a la main : les
+        trois autres sont recopiees de paquets Iconify, or aucun n'est vendore ici
+        (les traces ont ete transcrits par l'auteur en amont). Inventer un trace de
+        memoire aurait donne une forme non verifiee ; trois rectangles se verifient
+        d'un coup d'oeil.
+
+        `href` relatif : la page est servie depuis /bot/ une fois publiee et depuis
+        / en developpement, et un chemin absolu ne vaudrait que pour l'un des deux.
+      -->
+      <li class="group relative">
+        <a
+          href="motion.html"
+          target="_blank"
+          rel="noopener"
+          class="peer flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-[var(--muted)] transition hover:bg-black/5 hover:text-[var(--ink)]"
+          :aria-label="t('rail.motion')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <g fill="currentColor">
+              <rect x="2" y="3" width="8" height="8" rx="2" />
+              <rect x="14" y="3" width="8" height="8" rx="2" />
+              <rect x="2" y="13" width="8" height="8" rx="2" />
+              <rect x="14" y="13" width="8" height="8" rx="2" />
+            </g>
+          </svg>
+        </a>
+        <span
+          class="pointer-events-none absolute top-full left-1/2 z-10 mt-2 -translate-x-1/2 rounded-lg bg-[var(--ink)] px-2.5 py-1.5 text-xs whitespace-nowrap text-[var(--paper)] opacity-0 transition peer-focus-visible:opacity-100 group-hover:opacity-100 lg:top-1/2 lg:left-full lg:mt-0 lg:ml-2 lg:-translate-y-1/2 lg:translate-x-1 lg:peer-focus-visible:translate-x-0 lg:group-hover:translate-x-0"
+          role="tooltip"
+        >
+          {{ t('rail.motion') }}
+        </span>
+      </li>
     </ul>
   </nav>
 </template>

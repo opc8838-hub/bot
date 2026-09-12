@@ -25,7 +25,8 @@ const zh: typeof fr = {
     nav: '版块',
     customize: '个性化',
     animations: '动画',
-    settings: '设置'
+    settings: '设置',
+    motion: '卡牌动效'
   },
 
   panel: {

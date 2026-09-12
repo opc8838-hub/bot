@@ -32,7 +32,8 @@ export default {
     nav: 'Sections',
     customize: 'Personnaliser',
     animations: 'Animations',
-    settings: 'Réglages'
+    settings: 'Réglages',
+    motion: 'Cartes en mouvement'
   },
 
   panel: {

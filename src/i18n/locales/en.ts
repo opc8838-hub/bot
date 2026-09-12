@@ -20,7 +20,8 @@ const en: typeof fr = {
     nav: 'Sections',
     customize: 'Customise',
     animations: 'Animations',
-    settings: 'Settings'
+    settings: 'Settings',
+    motion: 'Card motion'
   },
 
   panel: {
