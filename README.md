@@ -31,6 +31,32 @@ SVG / PNG / 动画 SVG / GIF，时间轴还能导出 GIF 或 MP4。
 The rest of this file documents the code. If you only want to use the editor, the
 link above is all you need.
 
+## ▶ Open the motion editor / 打开卡牌动效编辑器
+
+**<https://opc8838-hub.github.io/bot/motion.html>**
+
+A separate, standalone page — its own URL, not a view inside the editor above. It
+recreates the "spread rows" motion of [animos.app/editor](https://animos.app/editor):
+cards leave the screen radially, settle into aligned rows, drift sideways while
+they hold, then leave the same way. The difference is that every card holds an
+**animated SVG you upload**, not a still image, so the deck moves and every bot
+inside it animates at the same time.
+
+Upload as many animated SVGs as you want — the ones this editor exports work as
+they come. Everything runs in the browser; no upload leaves your machine, since
+each file is read into a local `blob:` URL.
+
+**<https://opc8838-hub.github.io/bot/motion.html>**
+
+**这是一个独立的页面，有它自己的网址**，不是上面那个编辑器里的一个视图。它复刻了
+[animos.app/editor](https://animos.app/editor) 的「整行散开」动效：卡牌从画面外径向飞入，
+落成对齐的几行，停留期间整行横向漂移，再按原路飞出。不同之处在于每张卡牌装的是
+**你自己上传的动画 SVG**，不是一张静止图片，所以整个动效在动的同时，里面的每一个
+bot 也在动。
+
+动画 SVG 可以一次传多张——本编辑器导出的文件直接就能用。全部在浏览器里完成，
+文件只读进本地的 `blob:` 地址，不会上传到任何地方。
+
 An SVG recreation of the x.ai bot avatar: **one filled black shape** that morphs
 between 14 states, **two white shapes** for the eyes that morph independently, on
 a plain background. No animation library.
@@ -151,6 +177,19 @@ Short, and deliberate. Everything not listed here is upstream's and unmodified.
   zoomed about 26 % against both the editor and the GIF/MP4 exports, which is why
   it did not look like the avatar you had just been watching. It now uses
   `viewBoxExport(DEMI_ECRAN)`, the same frame as `cycleVersGif` and `cycleVersMp4`.
+- **A motion editor**, `public/motion.html`, published on its own URL at
+  <https://opc8838-hub.github.io/bot/motion.html>. It replicates the "spread rows"
+  motion of animos.app/editor, with one deliberate difference: each card carries an
+  **animated** SVG the user uploads rather than a still image, so the deck and the
+  bots inside it move at once. Standalone on purpose — no Vue, no build step, and
+  relative paths throughout so the same file is served correctly at `/motion.html`
+  in development and at `/bot/motion.html` once published, without knowing `--base`.
+  Three non-obvious points are documented in the file's header comment: why each
+  card gets its own `blob:` URL (every animated export declares the same global
+  `@keyframes oeil0`), why every clock needs a negative `animation-delay` (or the
+  whole wall blinks in unison), and why the `viewBox` is re-measured from the body
+  silhouette (an export is 316×316 around a 143×200 card, so more than half the box
+  is dead space).
 - **A batch exporter under `tools/`**, development only and not part of the app:
   renders every colour × every expression to an animated SVG, one folder per
   colour. It lives under vitest because that is the one launcher in this repo that
