@@ -1,7 +1,21 @@
 <!doctype html>
 <!--
-  Editeur de l'effet « rangees qui s'ecartent » : des cartes posees en pile au
-  centre s'ouvrent en rangees, tiennent, puis se rassemblent.
+  Editeur de l'effet « rangees qui s'ecartent », releve sur la reference image par
+  image plutot que devine :
+
+  - Rangees ALIGNEES, pas de decalage une rangee sur deux. Les bandes de cartes
+    occupent exactement les memes ordonnees d'un bout a l'autre du palier.
+  - Grille carree. Sur la reference, carte de 294 px pour un pas de 316 px a
+    960 px de haut : la carte fait 30 % de la hauteur de l'ecran et l'interstice
+    7,5 % de la carte. La grille deborde a gauche et a droite — les cartes y sont
+    coupees par le bord — mais remplit la hauteur exactement.
+  - Les rangees GLISSENT en sens ALTERNE pendant le palier, a vitesse a peu pres
+    constante : rangee 0 vers la droite, rangee 1 vers la gauche, etc. Releve sur
+    trois rangees independantes, meme profil de vitesse pour les trois.
+  - L'entree et la sortie ne sont pas une pile qui s'ouvre : les cartes sont
+    REPOUSSEES radialement hors du champ et grossies, donc elles se chevauchent en
+    traversant l'ecran, puis se posent sur leur case. C'est ce qui vide l'ecran aux
+    deux extremites de la boucle.
 
   Chaque carte porte un SVG ANIME televerse, et non une image fixe. C'est toute la
   difference avec la reference : le mouvement d'ensemble et le mouvement propre de
@@ -66,8 +80,8 @@
       }
       .carte {
         position: absolute;
-        /* `transform-origin` au centre : la pose empilee se decrit alors comme un
-           simple decalage vers le centre, sans avoir a recalculer un coin. */
+        /* `transform-origin` au centre : l'eloignement radial se decrit alors comme
+           une translation depuis le centre de la carte, sans coin a recalculer. */
         transform-origin: 50% 50%;
         border-radius: 4px;
         overflow: hidden;
@@ -224,13 +238,13 @@
       <fieldset>
         <legend>排版</legend>
         <label>行数 <b id="v-rows"></b></label>
-        <input id="rows" type="range" min="1" max="8" step="1" />
+        <input id="rows" type="range" min="1" max="6" step="1" />
         <label>间距 <b id="v-gap"></b></label>
-        <input id="gap" type="range" min="0" max="60" step="1" />
+        <input id="gap" type="range" min="0" max="0.3" step="0.005" />
         <label>卡片长宽比 <b id="v-ratio"></b></label>
         <input id="ratio" type="range" min="1" max="2" step="0.05" />
-        <label>错行 <b id="v-brick"></b></label>
-        <input id="brick" type="range" min="0" max="0.5" step="0.05" />
+        <label>每行漂移 <b id="v-derive"></b></label>
+        <input id="derive" type="range" min="0" max="0.6" step="0.01" />
       </fieldset>
 
       <fieldset>
@@ -243,10 +257,10 @@
         <input id="repli" type="range" min="0.2" max="4" step="0.1" />
         <label>交错 <b id="v-stagger"></b></label>
         <input id="stagger" type="range" min="0" max="1" step="0.05" />
-        <label>堆叠角度 <b id="v-angle"></b></label>
-        <input id="angle" type="range" min="-40" max="0" step="1" />
-        <label>堆叠缩放 <b id="v-scale"></b></label>
-        <input id="scale" type="range" min="0.05" max="1" step="0.05" />
+        <label>飞出距离 <b id="v-recul"></b></label>
+        <input id="recul" type="range" min="1" max="4" step="0.1" />
+        <label>飞出角度 <b id="v-angle"></b></label>
+        <input id="angle" type="range" min="-20" max="20" step="1" />
       </fieldset>
 
       <fieldset>
@@ -277,24 +291,35 @@
       const panneau = document.getElementById('panneau')
       const cle = document.getElementById('cle')
 
+      /* Les reglages par defaut sont ceux releves sur la reference, et non des
+         valeurs de depart arbitraires : 3 rangees et un interstice de 8 % donnent
+         une carte a 30 % de la hauteur de l'ecran, comme elle, et les trois durees
+         donnent une boucle de 7,8 s contre 8,0 s pour la sienne. */
       const reglages = {
-        rows: 4,
-        gap: 16,
+        rows: 3,
+        gap: 0.08,
         ratio: 1.4,
-        brick: 0.5,
-        ouvre: 1.4,
-        tenue: 2.6,
-        repli: 1.1,
-        stagger: 0.45,
-        angle: -16,
-        scale: 0.3,
+        derive: 0.21,
+        ouvre: 2.4,
+        tenue: 3.4,
+        repli: 1.3,
+        stagger: 0.3,
+        recul: 2.6,
+        angle: 0,
         fond: '#0b0b0d'
       }
 
+      /* Grossissement d'une carte en vol, par pas d'eloignement. Mesure sur la
+         reference : au plus fort du chevauchement une carte fait environ 2,4 fois sa
+         taille posee pour un eloignement de 2,6 pas. */
+      const GROSSIT = 0.55
+
       /** Les SVG televerses : { nom, texte, horloges }. */
       let fichiers = []
-      /** Les cartes posees : { el, img, x, y, w, h, retard, depart }. */
+      /** Les cartes posees : { el, ux, uy, loin, coin, rangee }. */
       let cartes = []
+      /** Le pas de la grille courante, en px : la derive s'exprime en pas. */
+      let pasCourant = { x: 1, y: 1 }
       let joue = true
       let t0 = performance.now()
 
@@ -385,62 +410,81 @@
       /**
        * Pose la grille.
        *
-       * Les cartes sont placees en absolu a leur position de rangee et c'est le
-       * `transform` qui les ramene vers la pile : la pose ouverte est alors
-       * l'identite, et une seule interpolation sert les deux sens.
+       * Les rangees sont alignees et la grille remplit la hauteur exactement, comme
+       * la reference. En revanche elle deborde a gauche et a droite : les cartes y
+       * sont coupees par le bord, et c'est cette reserve qui permet a la derive de
+       * tourner sur toute une boucle sans jamais decouvrir le bord de la grille.
        */
       function pose() {
         const w = scene.clientWidth
         const h = scene.clientHeight
         for (const c of cartes) c.el.remove()
         cartes = []
+        if (!w || !h) return
 
-        const debord = h * 0.25
-        const hauteur = (h + 2 * debord - (reglages.rows - 1) * reglages.gap) / reglages.rows
-        if (hauteur <= 4) return
+        const hauteur = h / (reglages.rows + (reglages.rows - 1) * reglages.gap)
         const largeur = hauteur / reglages.ratio
-        const pas = largeur + reglages.gap
-        const cols = Math.ceil((w + 2 * debord) / pas) + 1
-        const gauche = (w - (cols * pas - reglages.gap)) / 2
-        const haut = -debord
+        const pasY = hauteur * (1 + reglages.gap)
+        const pasX = largeur + hauteur * reglages.gap
+        pasCourant = { x: pasX, y: pasY }
 
-        // Le centre de la pile, et son rayon de dispersion pour l'ordre d'arrivee.
+        // Deux pas de marge de chaque cote : sur une boucle entiere la derive vaut
+        // `derive * duree` pas, moins que cela aux reglages par defaut.
+        const cols = Math.ceil(w / pasX) + 4
+        const gauche = (w - cols * pasX) / 2
         const cx = w / 2
         const cy = h / 2
-        const portee = Math.hypot(cols * pas, reglages.rows * (hauteur + reglages.gap)) / 2
+        const portee = Math.hypot(cols * pasX, reglages.rows * pasY) / 2
 
-        const total = cols * reglages.rows
-        for (let i = 0; i < total; i++) {
-          const col = i % cols
-          const row = Math.floor(i / cols)
-          const x = gauche + col * pas + (row % 2 ? reglages.brick * pas : 0)
-          const y = haut + row * (hauteur + reglages.gap)
+        for (let row = 0; row < reglages.rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            const i = row * cols + col
+            const x = gauche + col * pasX
+            const y = row * pasY
 
-          const el = document.createElement('div')
-          el.className = 'carte'
-          el.style.cssText = `left:${x}px;top:${y}px;width:${largeur}px;height:${hauteur}px`
+            const el = document.createElement('div')
+            el.className = 'carte'
+            el.style.cssText = `left:${x}px;top:${y}px;width:${largeur}px;height:${hauteur}px`
 
-          if (fichiers.length) {
-            const f = fichiers[i % fichiers.length]
-            const k = Math.floor(i / fichiers.length)
-            const urls = horloge(f, k + 1)
-            const img = document.createElement('img')
-            img.src = urls[k % urls.length]
-            img.alt = ''
-            el.appendChild(img)
+            if (fichiers.length) {
+              const f = fichiers[i % fichiers.length]
+              const k = Math.floor(i / fichiers.length)
+              const urls = horloge(f, k + 1)
+              const img = document.createElement('img')
+              img.src = urls[k % urls.length]
+              img.alt = ''
+              el.appendChild(img)
+            }
+
+            scene.appendChild(el)
+
+            const mx = x + largeur / 2
+            const my = y + hauteur / 2
+            // Direction d'eloignement : une carte pile au centre n'en a pas, on lui
+            // en donne une par son rang de colonne, sans quoi elle resterait plantee
+            // au milieu pendant que toutes les autres s'en vont.
+            let ux = mx - cx
+            let uy = my - cy
+            const n = Math.hypot(ux, uy)
+            if (n < 1) {
+              ux = col % 2 ? 1 : -1
+              uy = 0
+            } else {
+              ux /= n
+              uy /= n
+            }
+
+            cartes.push({
+              el,
+              ux,
+              uy,
+              loin: n,
+              // L'onde part du centre : le retard suit la distance au centre,
+              // normalisee, donc l'ordre reste le meme quelle que soit la grille.
+              coin: Math.min(n / portee, 1),
+              rangee: row
+            })
           }
-
-          scene.appendChild(el)
-          // L'onde part du coin haut-gauche : le retard suit la distance au coin,
-          // normalisee, donc l'ordre reste le meme quelle que soit la grille.
-          const coin = Math.hypot(x + largeur - gauche, y - haut) / portee
-          cartes.push({ el, x: x + largeur / 2, y: y + hauteur / 2, coin: Math.min(coin, 1) })
-        }
-
-        // La pile est au centre : chaque carte connait son decalage vers elle.
-        for (const c of cartes) {
-          c.dx = cx - c.x
-          c.dy = cy - c.y
         }
       }
 
@@ -461,21 +505,41 @@
 
         for (const c of cartes) {
           // Le retard d'ouverture et celui de fermeture sont MUTUELLEMENT inverses :
-          // la vague repart dans l'autre sens au repli, sinon les cartes qui sont
-          // sorties en dernier se coucheraient en premier et la pile se refermerait
-          // dans le desordre.
+          // la vague repart dans l'autre sens au repli, sinon les cartes arrivees en
+          // dernier repartiraient en premier et le mouvement se croiserait.
           const ouverture = ease(borne((t - c.coin * S) / reglages.ouvre))
           const fermeture = ease(
             borne((t - (reglages.ouvre + reglages.tenue + (1 - c.coin) * S)) / reglages.repli)
           )
+          // p = 1 : carte posee sur sa case. p = 0 : carte repoussee hors champ.
           const p = ouverture * (1 - fermeture)
+          const k = 1 - p
 
-          const q = 1 - p
-          const angle = reglages.angle * (1 + c.coin * 0.6) * q
-          const echelle = reglages.scale + (1 - reglages.scale) * p
+          const pousse = reglages.recul * k
+          // Le recul et le grossissement sont deux fonctions DISTINCTES de k, et
+          // c'est necessaire : au milieu de l'entree la reference montre un mur
+          // dense ou les cartes se chevauchent, donc des cartes grosses encore en
+          // place, alors qu'aux deux extremites elle montre un ecran vide, donc des
+          // cartes loin. Un recul seulement proportionnel a k vidait l'ecran des la
+          // moitie de l'entree ; en k au cube il ne mord qu'a la toute fin, et le
+          // grossissement, lui, reste lineaire pour faire le chevauchement.
+          const r3 = k * k * k
+          // Une carte quitte l'ecran dans la direction ou elle se trouve par rapport
+          // au centre : les rangees sortent donc par les cotes et les colonnes par
+          // le haut et le bas, ce qui est ce que montre la reference.
+          // La derive est monotone sur la boucle : elle repart de zero au
+          // recommencement, quand toutes les cartes sont hors champ et que la
+          // discontinuite ne se voit donc pas. La reserve de colonnes l'absorbe.
+          // Sens alterne, et c'est la rangee du HAUT qui va vers la gauche : releve
+          // sur la reference, ou la rangee 0 recule pendant que la rangee 1 avance.
+          const glisse = (c.rangee % 2 ? 1 : -1) * reglages.derive * pasCourant.x * t
+          const tx = glisse + c.ux * (c.loin + pasCourant.x * 0.5) * reglages.recul * r3
+          const ty = c.uy * (c.loin + pasCourant.y * 0.5) * reglages.recul * r3
+          const echelle = 1 + GROSSIT * pousse
+
           c.el.style.transform =
-            `translate(${(c.dx * q).toFixed(2)}px,${(c.dy * q).toFixed(2)}px) ` +
-            `rotate(${angle.toFixed(3)}deg) scale(${echelle.toFixed(4)})`
+            `translate(${tx.toFixed(1)}px,${ty.toFixed(1)}px) ` +
+            `rotate(${(reglages.angle * pousse).toFixed(2)}deg) scale(${echelle.toFixed(4)})`
         }
         return T
       }
@@ -514,15 +578,15 @@
 
       const rappels = [
         curseur('rows', 'rows', majPose, (v) => `${v} 行`),
-        curseur('gap', 'gap', majPose, (v) => `${v} px`),
+        curseur('gap', 'gap', majPose, (v) => `${Math.round(v * 100)}%`),
         curseur('ratio', 'ratio', majPose, (v) => v.toFixed(2)),
-        curseur('brick', 'brick', majPose, (v) => (v ? `${Math.round(v * 100)}%` : '关')),
+        curseur('derive', 'derive', majPose, (v) => (v ? `${v.toFixed(2)} 格/秒` : '关')),
         curseur('ouvre', 'ouvre', null, (v) => `${v.toFixed(1)} s`),
         curseur('tenue', 'tenue', null, (v) => `${v.toFixed(1)} s`),
         curseur('repli', 'repli', null, (v) => `${v.toFixed(1)} s`),
         curseur('stagger', 'stagger', null, (v) => (v ? `${Math.round(v * 100)}%` : '关')),
-        curseur('angle', 'angle', null, (v) => `${v}°`),
-        curseur('scale', 'scale', null, (v) => `${v.toFixed(2)}×`)
+        curseur('recul', 'recul', null, (v) => `${v.toFixed(1)} 格`),
+        curseur('angle', 'angle', null, (v) => `${v}°`)
       ]
 
       const fond = document.getElementById('fond')
