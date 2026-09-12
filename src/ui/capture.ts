@@ -401,7 +401,14 @@ export async function versSvgAnime(
 ): Promise<Blob> {
   let base = ''
   const matrices = await sequenceDuBot(reglages, taille, nombre, pas, (svg, i) => {
-    if (i === 0) base = svgAutonome(svg, taille)
+    /*
+     * Le cadre du composant, pas le recadrage serre de `viewBoxExport()` : c'est
+     * celui des exports de cycle (voir `cycleVersGif`) et celui que l'ecran
+     * affiche. Le SVG anime etait le seul a sortir zoome d'un quart, et comme tout
+     * le mouvement y est amplifie d'autant, il ne ressemblait pas a l'avatar qu'on
+     * venait de regarder.
+     */
+    if (i === 0) base = svgAutonome(svg, taille, viewBoxExport(DEMI_ECRAN))
     return matricesDesYeux(svg)
   })
   const markup = svgAnime(base, matrices, +((nombre - 1) * pas).toFixed(3))

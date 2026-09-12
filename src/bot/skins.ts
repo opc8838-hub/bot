@@ -4,7 +4,8 @@ import {
   profileFromPolygon,
   regularPolygonProfile,
   superellipseProfile,
-  unionOfCirclesProfile
+  unionOfCirclesProfile,
+  type Point
 } from './shape'
 
 /**
@@ -33,6 +34,7 @@ export type ShapeId =
   | 'hexagone'
   | 'nuage'
   | 'goutte'
+  | 'carte'
 
 export interface BotShape {
   id: ShapeId
@@ -76,6 +78,51 @@ const droplet = normalize(
 /** Capsule couchee : enveloppe de deux disques cote a cote. */
 const capsule = profileFromPolygon(hullOfCircles(-0.42, 0, 0.62, 0.42, 0, 0.62), 0, 0)
 
+/**
+ * Rectangle arrondi echantillonne en polygone : aretes droites et VRAIS arcs de
+ * cercle dans les coins. Sert de source a `profileFromPolygon`.
+ *
+ * Une superellipse donnerait un coin plus raide qu'un arc de meme encombrement —
+ * elle colle a la pointe du coin au lieu de l'arrondir — et c'est ce qui la fait
+ * lire comme « carre arrondi » plutot que comme une carte.
+ */
+function roundedRect(hw: number, hh: number, r: number, per = 16): Point[] {
+  const pts: Point[] = []
+  const coins: Array<[number, number, number]> = [
+    [hw - r, hh - r, 0],
+    [-(hw - r), hh - r, 90],
+    [-(hw - r), -(hh - r), 180],
+    [hw - r, -(hh - r), 270]
+  ]
+  for (const [ox, oy, a0] of coins) {
+    for (let k = 0; k <= per; k++) {
+      const a = ((a0 + (90 * k) / per) * Math.PI) / 180
+      pts.push({ x: ox + r * Math.cos(a), y: oy + r * Math.sin(a) })
+    }
+  }
+  return pts
+}
+
+/**
+ * Carte a jouer : 1:1.4, le rapport d'une carte de poker (2.5 x 3.5 pouces).
+ *
+ * Meme traitement que l'oeuf des profils animes : meme hauteur que la boule,
+ * retrecie en largeur. La demi-hauteur vaut donc 1 et la demi-largeur 1/1.4 —
+ * pas de `normalize`, sinon on epinglerait le coin (rayon max) au lieu de la
+ * hauteur, et la carte paraitrait plus courte que la boule.
+ *
+ * `COIN` est en unites de demi-largeur. Une vraie carte est a 0.10 : ce chiffre
+ * est intenable ici. `closedPath` lisse les 64 points de PROFILE_SAMPLES en
+ * cubiques Catmull-Rom, dont la tangente en un sommet est estimee sur ses deux
+ * voisins ; un coin trop serre ne tient que sur un ou deux sommets, la tangente
+ * enjambe le virage et la courbe ressort du profil avant d'y rentrer. Les 64
+ * points sont une contrainte dure, partagee avec les profils releves sur la
+ * video, qu'on ne peut pas reechantillonner. 0.4 est le compromis retenu : le
+ * coin est rond pour de bon, la forme reste une carte.
+ */
+const COIN = 0.4
+const card = profileFromPolygon(roundedRect(1 / 1.4, 1, (1 / 1.4) * COIN), 0, 0)
+
 export const SHAPES: BotShape[] = [
   { id: 'cercle', radii: new Array(PROFILE_SAMPLES).fill(1) },
   { id: 'galet', radii: pebble },
@@ -88,7 +135,8 @@ export const SHAPES: BotShape[] = [
   // 0deg : sommets a gauche et a droite, donc aretes du haut et du bas plates
   { id: 'hexagone', radii: regularPolygonProfile(6, 1.04, 0.26, 0) },
   { id: 'nuage', radii: cloud },
-  { id: 'goutte', radii: droplet }
+  { id: 'goutte', radii: droplet },
+  { id: 'carte', radii: card }
 ]
 
 // Map indexee par `string` et non par `ShapeId` : les appelants interrogent avec

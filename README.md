@@ -1,5 +1,17 @@
 # bloub
 
+> **This is a fork — a secondary development.** It is based on
+> [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub) by Jérémy Perret,
+> MIT licensed. The original design, the frame-by-frame measurements taken off the
+> reference video, and the rendering engine are all upstream's work and remain
+> theirs. See [What this fork changes](#what-this-fork-changes) for the short list
+> of differences.
+>
+> 本项目是 [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub) 的**二次开发**，
+> 原作者为 Jérémy Perret，MIT 许可协议。原始设计、参考视频的逐帧测量数据、以及
+> 渲染引擎均来自上游项目，版权与功劳归原作者所有。本仓库只做了少量修改，
+> 见 [What this fork changes](#what-this-fork-changes)。
+
 An SVG recreation of the x.ai bot avatar: **one filled black shape** that morphs
 between 14 states, **two white shapes** for the eyes that morph independently, on
 a plain background. No animation library.
@@ -25,7 +37,7 @@ only gate, so run `pnpm build` before you call something done.
 
 ## What's in it
 
-The rail on the left switches between three views. **Customise** offers 8 body
+The rail on the left switches between three views. **Customise** offers 9 body
 shapes, 12 colours and 16 rest expressions, kept between visits. **Animations** is
 a small editor: arrange states into a timeline, set how long each is held, save the
 result. **Settings** holds the language (French, English or Chinese) and the
@@ -101,9 +113,35 @@ Props: `size`, `shape`, `color`, `expression`, `paper`, `frozenAt`, `cycle`,
 [CHANGELOG.md](CHANGELOG.md), one entry per release — which is how you tell whether the
 copy you have carries a given fix.
 
+## What this fork changes
+
+Short, and deliberate. Everything not listed here is upstream's and unmodified.
+
+- **A poker-card body shape** (`carte`), 1:1.4 — the ratio of a real playing card
+  (2.5 × 3.5 in). It is a rounded rectangle sampled to a polygon so the corners
+  are true circular arcs rather than a superellipse: a superellipse hugs the
+  corner point instead of rounding it, which reads as "rounded square" instead of
+  "card". Labelled 扑克牌 / carte / card in the three locales.
+- **A framing fix in the animated SVG export.** `versSvgAnime` was the only export
+  that serialised on the tight default crop (`viewBoxExport()` → ±125) instead of
+  the frame the component actually draws (`DEMI_ECRAN` → ±158). The file came out
+  zoomed about 26 % against both the editor and the GIF/MP4 exports, which is why
+  it did not look like the avatar you had just been watching. It now uses
+  `viewBoxExport(DEMI_ECRAN)`, the same frame as `cycleVersGif` and `cycleVersMp4`.
+- **A batch exporter under `tools/`**, development only and not part of the app:
+  renders every colour × every expression to an animated SVG, one folder per
+  colour. It lives under vitest because that is the one launcher in this repo that
+  can mount a DOM, and it runs on a separate config so an ordinary `pnpm test`
+  never writes those files:
+
+  ```bash
+  pnpm vitest run --config vitest.export.config.ts
+  ```
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE) — upstream's notice, kept verbatim, as the licence
+requires. The changes listed above are released under the same terms.
 
 Not affiliated with, endorsed by or connected to x.ai. It recreates the visual
 behaviour of their bot avatar as an exercise; "Grok" and "x.ai" belong to their
