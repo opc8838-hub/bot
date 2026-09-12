@@ -197,9 +197,6 @@
         font: inherit;
         cursor: pointer;
       }
-      #cle.ferme {
-        display: block;
-      }
     </style>
   </head>
   <body>
@@ -543,8 +540,9 @@
         panneau.classList.remove('ferme')
         cle.hidden = true
       })
-      // Le panneau se range pour regarder l'effet en grand, et un clic sur la
-      // scene le fait revenir : sans cela, plus aucun moyen de le rouvrir.
+      // Echap range le panneau pour regarder l'effet en grand. Il est alors
+      // rappele par le bouton `#cle`, sans quoi il n'y aurait plus aucun moyen de
+      // le rouvrir — un panneau qu'on ne peut que fermer n'est pas un reglage.
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return
         panneau.classList.toggle('ferme')
